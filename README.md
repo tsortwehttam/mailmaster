@@ -189,6 +189,7 @@ mailmaster poll --query "in:inbox is:unread"
 mailmaster poll --query "category:promotions is:unread"
 mailmaster poll --query "in:inbox is:unread" --fetch metadata
 mailmaster poll --query "in:inbox is:unread" --fetch full
+mailmaster poll --query "in:inbox is:unread" --exit-when any-match
 mailmaster poll --interval-ms=2000 --out ./tmp/unread.json
 ```
 
@@ -201,15 +202,16 @@ mailmaster poll --account=personal | jq '.messages[].id'
 Important poll flags:
 
 - `--interval-ms` polling interval in milliseconds (default `5000`)
-- `--max-results` max unread messages returned once found (default `20`)
+- `--max-results` max matched messages returned once found (default `20`)
 - `--query` Gmail search query to poll for (default `is:unread`)
 - `--fetch` optional hydration mode: `none` (default), `metadata`, or `full`
+- `--exit-when` poll exit condition. Current value: `any-match` (exit when one or more matches are found)
 - `--out` optional file path to also write the same JSON payload
 
 Output:
 
-- One JSON object to `stdout` when unread messages are found, then process exits.
-- JSON shape: `{ polledAt, account, query, messages, resolvedMessages? }`
+- One JSON object to `stdout` when the exit condition is met, then process exits.
+- JSON shape: `{ polledAt, account, query, exitWhen, messages, resolvedMessages? }`
 
 ## Agent-Friendly Notes
 
