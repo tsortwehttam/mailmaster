@@ -366,9 +366,51 @@ export let configureMailCli = (cli: Argv) =>
       console.log(JSON.stringify(r.data, null, 2))
     },
     )
+    .command(
+    "mark-read <messageId>",
+    "Mark a message as read by removing the Gmail UNREAD label",
+    y =>
+      y.positional("messageId", {
+        type: "string",
+        describe: "Gmail message id",
+      }),
+    async argv => {
+      let r = await gmail(argv.account, argv.verbose).users.messages.modify({
+        userId: "me",
+        id: argv.messageId,
+        requestBody: {
+          removeLabelIds: ["UNREAD"],
+        },
+      })
+      verboseLog(argv.verbose, "mark-read message", { id: argv.messageId, labelIds: r.data.labelIds })
+      console.log(JSON.stringify(r.data, null, 2))
+    },
+    )
+    .command(
+    "archive <messageId>",
+    "Archive a message by removing the Gmail INBOX label",
+    y =>
+      y.positional("messageId", {
+        type: "string",
+        describe: "Gmail message id",
+      }),
+    async argv => {
+      let r = await gmail(argv.account, argv.verbose).users.messages.modify({
+        userId: "me",
+        id: argv.messageId,
+        requestBody: {
+          removeLabelIds: ["INBOX"],
+        },
+      })
+      verboseLog(argv.verbose, "archive message", { id: argv.messageId, labelIds: r.data.labelIds })
+      console.log(JSON.stringify(r.data, null, 2))
+    },
+    )
     .example("$0 search \"from:alerts@example.com newer_than:7d\"", "Find recent messages")
     .example("$0 search \"in:inbox is:unread\" --fetch=metadata", "Find matches and include hydrated metadata payloads")
     .example("$0 read 190cf9f55b05efcc", "Read metadata for one Gmail message id")
+    .example("$0 mark-read 190cf9f55b05efcc", "Mark one Gmail message as read")
+    .example("$0 archive 190cf9f55b05efcc", "Archive one Gmail message (remove INBOX label)")
     .example("$0 send --to user@example.com --subject \"Hi\" --body \"Hello\" --yes", "Send plain-text email")
     .example(
       "$0 send --to user@example.com --cc a@example.com,b@example.com --bcc archive@example.com --subject \"Report\" --attach ./report.pdf --attach ./metrics.csv --yes",
@@ -380,6 +422,12 @@ export let configureMailCli = (cli: Argv) =>
     )
     .epilog(
       [
+        "Read state notes:",
+        "- `mark-read` removes the `UNREAD` label from the specified message id.",
+        "- `archive` removes the `INBOX` label from the specified message id.",
+        "- Requires OAuth scope `https://www.googleapis.com/auth/gmail.modify`.",
+        "- If your existing token predates this scope, rerun `mailmaster auth --account=<name>`.",
+        "",
         "Send behavior notes:",
         "- `--yes` is required to send (safety flag).",
         "- `--cc`, `--bcc`, and `--attach` accept repeated flags and comma-separated values.",
@@ -389,7 +437,7 @@ export let configureMailCli = (cli: Argv) =>
         "- `--verbose` prints resolved credential/token paths and operation diagnostics to stderr.",
       ].join("\n"),
     )
-    .demandCommand(1, "Choose a command: search, read, or send.")
+    .demandCommand(1, "Choose a command: search, read, mark-read, archive, or send.")
     .strict()
     .recommendCommands()
     .help()

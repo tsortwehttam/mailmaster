@@ -54,6 +54,8 @@ let cli = yargs(args)
   .example("$0 mail send --help", "Show all send headers/threading/attachment flags")
   .example("$0 mail search \"from:someone newer_than:7d\"", "Search messages")
   .example("$0 mail read 190cf9f55b05efcc", "Read message metadata by Gmail message id")
+  .example("$0 mail mark-read 190cf9f55b05efcc", "Mark a Gmail message as read")
+  .example("$0 mail archive 190cf9f55b05efcc", "Archive a Gmail message")
   .example("$0 mail send --to you@example.com --subject \"Hi\" --body \"Hello\" --yes", "Send a basic email")
   .example(
     "$0 mail send --to you@example.com --thread-id 190cb53f30f3d1aa --in-reply-to \"<orig@id>\" --references \"<orig@id>\" --body \"Reply\" --yes",

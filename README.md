@@ -95,6 +95,8 @@ Subcommands:
 
 - `search <query>`
 - `read <messageId>`
+- `mark-read <messageId>`
+- `archive <messageId>`
 - `send`
 
 #### Search
@@ -178,6 +180,26 @@ Important send flags:
 Output:
 
 - JSON send response from Gmail API (includes fields such as `id`, `threadId`)
+
+#### Mark Read
+
+```bash
+mailmaster mail --account=personal mark-read 190cf9f55b05efcc
+```
+
+Output:
+
+- JSON message object after update (includes fields such as `id`, `threadId`, `labelIds`)
+
+#### Archive
+
+```bash
+mailmaster mail --account=personal archive 190cf9f55b05efcc
+```
+
+Output:
+
+- JSON message object after update (includes fields such as `id`, `threadId`, `labelIds`)
 
 ### `mailmaster poll`
 
