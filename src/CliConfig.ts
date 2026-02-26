@@ -1,11 +1,18 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 export let DEFAULT_ACCOUNT = "default"
 
-export let LOCAL_CREDENTIALS_PATH = path.resolve("credentials.json")
-export let LOCAL_TOKENS_DIR = path.resolve("tokens")
+export let APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+export let LOCAL_CONFIG_DIRNAME = ".mailmaster"
+export let PWD_CONFIG_DIR = path.resolve(process.cwd(), LOCAL_CONFIG_DIRNAME)
+export let APP_CONFIG_DIR = path.resolve(APP_DIR, LOCAL_CONFIG_DIRNAME)
+export let PWD_CREDENTIALS_PATH = path.resolve(PWD_CONFIG_DIR, "credentials.json")
+export let PWD_TOKENS_DIR = path.resolve(PWD_CONFIG_DIR, "tokens")
+export let APP_CREDENTIALS_PATH = path.resolve(APP_CONFIG_DIR, "credentials.json")
+export let APP_TOKENS_DIR = path.resolve(APP_CONFIG_DIR, "tokens")
 export let GLOBAL_CONFIG_DIR = path.resolve(os.homedir(), ".mailmaster")
 export let GLOBAL_CREDENTIALS_PATH = path.resolve(GLOBAL_CONFIG_DIR, "credentials.json")
 export let GLOBAL_TOKENS_DIR = path.resolve(GLOBAL_CONFIG_DIR, "tokens")
@@ -16,15 +23,18 @@ export let GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
 ]
 
+let dedupe = (paths: string[]) => Array.from(new Set(paths.map(x => path.resolve(x))))
+
+export let resolveCredentialsPaths = () =>
+  dedupe([PWD_CREDENTIALS_PATH, APP_CREDENTIALS_PATH, GLOBAL_CREDENTIALS_PATH])
+
 export let resolveCredentialsPath = () => {
-  if (fs.existsSync(LOCAL_CREDENTIALS_PATH)) return LOCAL_CREDENTIALS_PATH
-  return GLOBAL_CREDENTIALS_PATH
+  let candidates = resolveCredentialsPaths()
+  return candidates.find(x => fs.existsSync(x)) ?? GLOBAL_CREDENTIALS_PATH
 }
 
-export let resolveTokenReadPathsForAccount = (account: string) => [
-  path.resolve(LOCAL_TOKENS_DIR, `${account}${TOKEN_FILE_EXTENSION}`),
-  path.resolve(GLOBAL_TOKENS_DIR, `${account}${TOKEN_FILE_EXTENSION}`),
-]
+export let resolveTokenReadPathsForAccount = (account: string) =>
+  resolveAllTokenDirs().map(dir => path.resolve(dir, `${account}${TOKEN_FILE_EXTENSION}`))
 
 export let resolveTokenReadPathForAccount = (account: string) => {
   let candidates = resolveTokenReadPathsForAccount(account)
@@ -36,11 +46,10 @@ export let resolveTokenReadPathForAccount = (account: string) => {
 }
 
 export let resolveTokenWriteDir = () => {
-  if (fs.existsSync(LOCAL_CREDENTIALS_PATH) || fs.existsSync(LOCAL_TOKENS_DIR)) return LOCAL_TOKENS_DIR
-  return GLOBAL_TOKENS_DIR
+  return PWD_TOKENS_DIR
 }
 
 export let resolveTokenWritePathForAccount = (account: string) =>
   path.resolve(resolveTokenWriteDir(), `${account}${TOKEN_FILE_EXTENSION}`)
 
-export let resolveAllTokenDirs = () => [LOCAL_TOKENS_DIR, GLOBAL_TOKENS_DIR]
+export let resolveAllTokenDirs = () => dedupe([PWD_TOKENS_DIR, APP_TOKENS_DIR, GLOBAL_TOKENS_DIR])

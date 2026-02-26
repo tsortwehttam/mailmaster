@@ -3,10 +3,11 @@ import { hideBin } from "yargs/helpers"
 import { parseAccountsCli } from "./accounts"
 import { parseAuthCli } from "./auth"
 import { parseMailCli } from "./mail"
+import { parsePollCli } from "./poll"
 import { verboseLog } from "../src/Verbose"
 
 let args = hideBin(process.argv)
-let subcommands = new Set(["mail", "auth", "accounts"])
+let subcommands = new Set(["mail", "auth", "accounts", "poll"])
 let verbose = args.includes("--verbose") || args.includes("-v")
 let commandIndex = args.findIndex(x => !x.startsWith("-"))
 let command = commandIndex >= 0 ? args[commandIndex] : undefined
@@ -26,13 +27,14 @@ let cli = yargs(args)
   .command("mail", "Search, read, and send Gmail messages")
   .command("auth", "Run OAuth flow and store/update token for an account")
   .command("accounts", "List token-backed accounts available to this CLI")
+  .command("poll", "Poll for unread messages and emit JSON when found")
   .command(
     "help [command]",
     "Show main help or help for a specific subcommand",
     y =>
       y.positional("command", {
         type: "string",
-        choices: ["mail", "auth", "accounts"] as const,
+        choices: ["mail", "auth", "accounts", "poll"] as const,
         describe: "Subcommand to show help for",
       }),
     async argv => {
@@ -42,6 +44,7 @@ let cli = yargs(args)
       }
       if (argv.command === "mail") return parseMailCli(["--help"], "mailmaster mail")
       if (argv.command === "auth") return parseAuthCli(["--help"], "mailmaster auth")
+      if (argv.command === "poll") return parsePollCli(["--help"], "mailmaster poll")
       return parseAccountsCli(["--help"], "mailmaster accounts")
     },
   )
@@ -58,16 +61,18 @@ let cli = yargs(args)
   )
   .example("$0 auth --account=personal", "Authorize and store a token for an account")
   .example("$0 accounts --format=json", "List accounts in machine-readable form")
+  .example("$0 poll --account=personal --interval-ms=2000", "Poll for unread messages and emit JSON once found")
   .epilog(
     [
       "Automation notes:",
       "- `mail` outputs JSON.",
       "- `accounts` outputs JSON by default (`--format=text` for line output).",
+      "- `poll` outputs JSON once unread messages exist, then exits.",
       "- `auth` prints a success line with the saved token path.",
       "- `--verbose` can be used at top-level or subcommand level for stderr diagnostics.",
       "- Use `mail --help` and `mail send --help` for full option/behavior contracts.",
       "- Account selection is always via `--account` (default: \"default\").",
-      "- `help <command>` is supported for: mail, auth, accounts.",
+      "- `help <command>` is supported for: mail, auth, accounts, poll.",
     ].join("\n"),
   )
   .strict()
@@ -125,6 +130,11 @@ if (!dispatched && command === "mail") {
     console.error(e?.message ?? e)
     process.exit(1)
   })
+} else if (!dispatched && command === "poll") {
+  parsePollCli([...forwardedVerboseArgs, ...commandArgs], "mailmaster poll").catch(e => {
+    console.error(e?.message ?? e)
+    process.exit(1)
+  })
 } else if (!dispatched && command === "help") {
   if (args.length === 1) {
     cli.showHelp()
@@ -135,6 +145,8 @@ if (!dispatched && command === "mail") {
     parseMailCli([...forwardedVerboseArgs, "--help"], "mailmaster mail")
   } else if (subhelp === "auth") {
     parseAuthCli([...forwardedVerboseArgs, "--help"], "mailmaster auth")
+  } else if (subhelp === "poll") {
+    parsePollCli([...forwardedVerboseArgs, "--help"], "mailmaster poll")
   } else if (subhelp === "accounts") {
     parseAccountsCli([...forwardedVerboseArgs, "--help"], "mailmaster accounts")
   } else {

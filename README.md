@@ -27,16 +27,17 @@ npm unlink -g mailmaster
 `mailmaster` supports both local project config and global home config.
 
 - Credentials path resolution:
-  - `./credentials.json` (preferred if present)
+  - `./.mailmaster/credentials.json` (current working directory, preferred if present)
+  - `<mailmaster-install-dir>/.mailmaster/credentials.json`
   - `~/.mailmaster/credentials.json` (fallback)
 - Token read locations:
-  - `./tokens/*.json`
+  - `./.mailmaster/tokens/*.json` (current working directory)
+  - `<mailmaster-install-dir>/.mailmaster/tokens/*.json`
   - `~/.mailmaster/tokens/*.json`
 - Token write location (`mailmaster auth`):
-  - `./tokens/` when local config exists
-  - otherwise `~/.mailmaster/tokens/`
+  - `./.mailmaster/tokens/` in the current working directory
 
-Accounts are token filenames without `.json` (for example `tokens/personal.json` => account `personal`).
+Accounts are token filenames without `.json` (for example `.mailmaster/tokens/personal.json` => account `personal`).
 
 ## Top-Level Usage
 
@@ -46,6 +47,7 @@ mailmaster help
 mailmaster help mail
 mailmaster help auth
 mailmaster help accounts
+mailmaster help poll
 ```
 
 Top-level commands:
@@ -53,6 +55,7 @@ Top-level commands:
 - `mailmaster mail ...`
 - `mailmaster auth ...`
 - `mailmaster accounts ...`
+- `mailmaster poll ...`
 
 Global flag:
 
@@ -74,7 +77,7 @@ Output:
 
 ### `mailmaster accounts`
 
-Lists token-backed accounts available from local/global token directories.
+Lists token-backed accounts available from pwd/install-dir/home token directories.
 
 ```bash
 mailmaster accounts --format=json
@@ -167,6 +170,32 @@ Important send flags:
 Output:
 
 - JSON send response from Gmail API (includes fields such as `id`, `threadId`)
+
+### `mailmaster poll`
+
+Polls for unread mail (`is:unread`) until at least one message exists, then emits JSON and exits.
+
+```bash
+mailmaster poll --account=personal
+mailmaster poll --interval-ms=2000 --out ./tmp/unread.json
+```
+
+Pipe-friendly example:
+
+```bash
+mailmaster poll --account=personal | jq '.messages[].id'
+```
+
+Important poll flags:
+
+- `--interval-ms` polling interval in milliseconds (default `5000`)
+- `--max-results` max unread messages returned once found (default `20`)
+- `--out` optional file path to also write the same JSON payload
+
+Output:
+
+- One JSON object to `stdout` when unread messages are found, then process exits.
+- JSON shape: `{ polledAt, account, query, messages }`
 
 ## Agent-Friendly Notes
 

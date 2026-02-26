@@ -171,7 +171,7 @@ export let configureMailCli = (cli: Argv) =>
     .option("account", {
       type: "string",
       default: DEFAULT_ACCOUNT,
-      describe: "Token account name (uses tokens/<account>.json)",
+      describe: "Token account name (uses .mailmaster/tokens/<account>.json)",
     })
     .option("verbose", {
       alias: "v",
