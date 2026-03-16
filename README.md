@@ -121,6 +121,9 @@ Output contract:
 Subcommands:
 
 - `search <query>`
+- `count <query>`
+- `export`
+- `corpus`
 - `read <messageId>`
 - `mark-read <messageId>`
 - `archive <messageId>`
@@ -143,6 +146,98 @@ Important search flags:
 
 - `--max-results` maximum matched messages to return (default `20`)
 - `--fetch` optional hydration mode: `none` (default), `metadata`, or `full`
+
+#### Count
+
+```bash
+mailmon mail --account=personal count "from:bactolac.com newer_than:1y"
+```
+
+Output:
+
+- JSON object with:
+  - `account`
+  - `query`
+  - `resultSizeEstimate`
+
+Notes:
+
+- Uses Gmail's `resultSizeEstimate`
+- This is an estimate, not a guaranteed exact count
+
+#### Export
+
+```bash
+mailmon mail --account=personal export --out-dir ./exports
+mailmon mail --account=personal export --out-dir ./exports --all
+mailmon mail --account=personal export --out-dir ./exports --resume
+mailmon mail --account=personal export --out-dir ./exports --scope inbox --newer-than 7d --has-attachment
+mailmon mail --account=personal export --out-dir ./exports --query 'from:billing@example.com' --state ./.mailmon/state/export.json
+```
+
+Behavior:
+
+- Streams through Gmail pages until exhausted or the run reaches `--max-messages` new exports
+- Exports newest-first in the order returned by Gmail
+- Writes one directory per message with:
+  - `message.json`
+  - `headers.json`
+  - `body.txt` and/or `body.html`
+  - `attachments/`
+- Emits one final JSON summary to stdout when complete
+- Safety cap is `100` new exports per run by default; use `--all` to remove that cap
+- `--resume` continues the same export using a default state file derived from account, query, and output directory
+
+Default filter behavior:
+
+- Default query is `in:inbox category:primary`
+- Spam and Trash are excluded unless `--include-spam-trash` is set
+- `--query` appends raw Gmail search terms to the generated default/filter query
+
+Important export flags:
+
+- `--out-dir` required export destination
+- `--scope` mailbox scope: `primary` (default), `inbox`, or `all-mail`
+- `--from`, `--to`, `--label` common structured filters
+- `--newer-than`, `--older-than`, `--after`, `--before` date filters
+- `--read` filter by read state: `any` (default), `unread`, `read`
+- `--has-attachment` only export messages with attachments
+- `--page-size` Gmail page size while paginating (default `100`)
+- `--max-messages` optional cap on new messages to export in this run (default `100` unless `--all`)
+- `--all` remove the default export safety cap
+- `--resume` continue incrementally using the default derived state file
+- `--state` optional explicit incremental export state file path
+- `--jsonl-out` optional append-only JSONL manifest with one record per exported or skipped message
+
+#### Read
+
+#### Corpus
+
+```bash
+mailmon mail corpus --from-export ./exports --out-dir ./corpus
+```
+
+Behavior:
+
+- Scans exported message folders produced by `mail export`
+- Writes:
+  - `messages.jsonl` with one normalized record per message
+  - `chunks.jsonl` with retrieval-friendly chunks for message bodies and supported text attachments
+  - `threads.jsonl` with chronological thread records and per-message excerpts
+  - `summary.json`
+- Streams JSONL output incrementally so large exports do not need to be loaded into one prompt or one giant file
+
+Important corpus flags:
+
+- `--from-export` required export root to scan
+- `--out-dir` required corpus output directory
+- `--chunk-chars` maximum chunk size for `chunks.jsonl` (default `4000`)
+- `--chunk-overlap-chars` overlap between adjacent chunks (default `400`)
+- `--max-attachment-bytes` max bytes read from any one attachment when extracting text (default `250000`)
+- `--max-attachment-chars` max normalized characters kept from any one attachment (default `20000`)
+- `--thread-excerpt-chars` excerpt size stored per message inside `threads.jsonl` (default `500`)
+
+Current attachment text extraction is limited to text-like formats such as `.txt`, `.md`, `.csv`, `.json`, `.log`, `.xml`, `.html`, and `.htm`.
 
 #### Read
 
