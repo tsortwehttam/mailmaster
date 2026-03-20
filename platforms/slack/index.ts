@@ -16,8 +16,6 @@
  *   messagemon slack search     — Search messages (requires search:read scope)
  *   messagemon slack read       — Read a message by channel + ts
  *   messagemon slack send       — Post a message to a channel
- *   messagemon slack poll       — Poll a channel for new messages
- *   messagemon slack monitor    — Monitor a channel and run agent per message
  */
 
 import yargs from "yargs"
@@ -57,15 +55,7 @@ export let configureSlackCli = (cli: Argv) =>
       console.error("Not yet implemented.")
       process.exit(1)
     })
-    .command("poll", "Poll a Slack channel for new messages (not yet implemented)", () => {}, () => {
-      console.error("Not yet implemented.")
-      process.exit(1)
-    })
-    .command("monitor", "Monitor a Slack channel and run agent per message (not yet implemented)", () => {}, () => {
-      console.error("Not yet implemented.")
-      process.exit(1)
-    })
-    .demandCommand(1, "Choose a command: auth, accounts, search, read, send, poll, or monitor.")
+    .demandCommand(1, "Choose a command: auth, accounts, search, read, or send.")
     .strict()
     .help()
 

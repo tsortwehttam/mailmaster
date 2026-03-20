@@ -14,8 +14,10 @@ export let GLOBAL_CONFIG_DIR = path.resolve(os.homedir(), ".messagemon")
 export let TOKEN_FILE_EXTENSION = ".json"
 
 // ---------------------------------------------------------------------------
-// Per-platform credential / token paths
+// Config directory resolution (pwd → app-install → home)
 // ---------------------------------------------------------------------------
+
+let dedupe = (paths: string[]) => Array.from(new Set(paths.map(x => path.resolve(x))))
 
 /** Returns the three-tier config directories (pwd, app-install, home) */
 export let resolveConfigDirs = () => dedupe([PWD_CONFIG_DIR, APP_CONFIG_DIR, GLOBAL_CONFIG_DIR])
@@ -29,15 +31,15 @@ let platformTokenDirs = (platform: Platform) =>
   resolveConfigDirs().map(dir => path.resolve(dir, platform, "tokens"))
 
 // ---------------------------------------------------------------------------
-// Legacy mail paths (kept for backward compat during migration)
+// Flat-layout paths (.messagemon/credentials.json, .messagemon/tokens/)
+// Used when no platform arg is passed — the default for all current callers.
 // ---------------------------------------------------------------------------
 
-export let PWD_CREDENTIALS_PATH = path.resolve(PWD_CONFIG_DIR, "credentials.json")
-export let PWD_TOKENS_DIR = path.resolve(PWD_CONFIG_DIR, "tokens")
-export let APP_CREDENTIALS_PATH = path.resolve(APP_CONFIG_DIR, "credentials.json")
-export let APP_TOKENS_DIR = path.resolve(APP_CONFIG_DIR, "tokens")
-export let GLOBAL_CREDENTIALS_PATH = path.resolve(GLOBAL_CONFIG_DIR, "credentials.json")
-export let GLOBAL_TOKENS_DIR = path.resolve(GLOBAL_CONFIG_DIR, "tokens")
+let flatCredentialsPaths = () =>
+  resolveConfigDirs().map(dir => path.resolve(dir, "credentials.json"))
+
+let flatTokenDirs = () =>
+  resolveConfigDirs().map(dir => path.resolve(dir, "tokens"))
 
 export let GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -45,33 +47,29 @@ export let GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
 ]
 
-let dedupe = (paths: string[]) => Array.from(new Set(paths.map(x => path.resolve(x))))
-
 // ---------------------------------------------------------------------------
-// Generic platform-aware resolution helpers
+// Resolution helpers
 // ---------------------------------------------------------------------------
 
 export let resolveCredentialsPaths = (platform?: Platform) => {
   if (platform) return dedupe(platformCredentialsPaths(platform))
-  // Fallback: legacy flat layout
-  return dedupe([PWD_CREDENTIALS_PATH, APP_CREDENTIALS_PATH, GLOBAL_CREDENTIALS_PATH])
+  return dedupe(flatCredentialsPaths())
 }
 
 export let resolveCredentialsPath = (platform?: Platform) => {
   let candidates = resolveCredentialsPaths(platform)
-  // Also check legacy paths when using platform-specific resolution
+  // Also check flat-layout paths when using platform-specific resolution
   if (platform) {
-    let legacy = dedupe([PWD_CREDENTIALS_PATH, APP_CREDENTIALS_PATH, GLOBAL_CREDENTIALS_PATH])
-    candidates = dedupe([...candidates, ...legacy])
+    candidates = dedupe([...candidates, ...flatCredentialsPaths()])
   }
   return candidates.find(x => fs.existsSync(x)) ?? candidates[0]
 }
 
 export let resolveAllTokenDirs = (platform?: Platform) => {
   if (platform) {
-    return dedupe([...platformTokenDirs(platform), PWD_TOKENS_DIR, APP_TOKENS_DIR, GLOBAL_TOKENS_DIR])
+    return dedupe([...platformTokenDirs(platform), ...flatTokenDirs()])
   }
-  return dedupe([PWD_TOKENS_DIR, APP_TOKENS_DIR, GLOBAL_TOKENS_DIR])
+  return dedupe(flatTokenDirs())
 }
 
 export let resolveTokenReadPathsForAccount = (account: string, platform?: Platform) =>
@@ -88,7 +86,7 @@ export let resolveTokenReadPathForAccount = (account: string, platform?: Platfor
 
 export let resolveTokenWriteDir = (platform?: Platform) => {
   if (platform) return path.resolve(PWD_CONFIG_DIR, platform, "tokens")
-  return PWD_TOKENS_DIR
+  return path.resolve(PWD_CONFIG_DIR, "tokens")
 }
 
 export let resolveTokenWritePathForAccount = (account: string, platform?: Platform) =>

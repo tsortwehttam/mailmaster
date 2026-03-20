@@ -14,8 +14,6 @@
  *   messagemon whatsapp accounts   — List configured phone numbers / business accounts
  *   messagemon whatsapp read       — Read a message by id
  *   messagemon whatsapp send       — Send a message to a phone number
- *   messagemon whatsapp poll       — Poll for new incoming messages (webhook-based or polling)
- *   messagemon whatsapp monitor    — Monitor incoming messages and run agent per message
  */
 
 import yargs from "yargs"
@@ -51,15 +49,7 @@ export let configureWhatsAppCli = (cli: Argv) =>
       console.error("Not yet implemented.")
       process.exit(1)
     })
-    .command("poll", "Poll for new incoming WhatsApp messages (not yet implemented)", () => {}, () => {
-      console.error("Not yet implemented.")
-      process.exit(1)
-    })
-    .command("monitor", "Monitor incoming WhatsApp messages and run agent per message (not yet implemented)", () => {}, () => {
-      console.error("Not yet implemented.")
-      process.exit(1)
-    })
-    .demandCommand(1, "Choose a command: auth, accounts, read, send, poll, or monitor.")
+    .demandCommand(1, "Choose a command: auth, accounts, read, or send.")
     .strict()
     .help()
 

@@ -16,8 +16,6 @@
  *   messagemon teams search     — Search Teams messages via Graph API
  *   messagemon teams read       — Read a message by team/channel/message id
  *   messagemon teams send       — Post a message to a Teams channel
- *   messagemon teams poll       — Poll a channel for new messages
- *   messagemon teams monitor    — Monitor a channel and run agent per message
  */
 
 import yargs from "yargs"
@@ -57,15 +55,7 @@ export let configureTeamsCli = (cli: Argv) =>
       console.error("Not yet implemented.")
       process.exit(1)
     })
-    .command("poll", "Poll a Teams channel for new messages (not yet implemented)", () => {}, () => {
-      console.error("Not yet implemented.")
-      process.exit(1)
-    })
-    .command("monitor", "Monitor a Teams channel and run agent per message (not yet implemented)", () => {}, () => {
-      console.error("Not yet implemented.")
-      process.exit(1)
-    })
-    .demandCommand(1, "Choose a command: auth, accounts, search, read, send, poll, or monitor.")
+    .demandCommand(1, "Choose a command: auth, accounts, search, read, or send.")
     .strict()
     .help()
 
