@@ -108,9 +108,16 @@ HTTP API server that exposes all commands as JSON endpoints with token authentic
 ```bash
 messagemon serve --token=mysecret
 messagemon serve --token=mysecret --port=8080 --host=0.0.0.0
+messagemon serve --token=mysecret --mail-allow-to=a@x.com,b@x.com --send-rate-limit=10
+messagemon serve --token=mysecret --slack-allow-channels=general,alerts
 ```
 
 Every request must include the header `X-Auth-Token: <token>`. All endpoints accept `POST` with a JSON body and return `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`. Request bodies are validated with Zod.
+
+**Send filtering:**
+- `--mail-allow-to` — comma-separated list of allowed email recipients. Disallowed addresses are silently stripped from to/cc/bcc. If no allowed recipients remain, the request returns 400. Omit to allow all.
+- `--slack-allow-channels` — comma-separated list of allowed Slack channels. Sends to disallowed channels return 400. Omit to allow all.
+- `--send-rate-limit` — max sends per minute across mail + Slack combined. Excess requests return 429 with retry hint. Default 0 (unlimited).
 
 | Endpoint | Description |
 |----------|-------------|

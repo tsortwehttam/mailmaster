@@ -2,6 +2,15 @@ import yargs from "yargs"
 import type { Argv } from "yargs"
 import { startServer } from "./server"
 
+let normalizeMultiValue = (value: unknown) => {
+  if (value == null) return []
+  let raw = Array.isArray(value) ? value : [value]
+  return raw
+    .flatMap(x => String(x).split(","))
+    .map(x => x.trim())
+    .filter(Boolean)
+}
+
 export let configureServeCli = (cli: Argv) =>
   cli
     .usage("Usage: $0 [options]")
@@ -20,6 +29,30 @@ export let configureServeCli = (cli: Argv) =>
       demandOption: true,
       describe: "Secret token for X-Auth-Token authentication (required)",
     })
+    .option("mail-allow-to", {
+      type: "array",
+      string: true,
+      default: [],
+      coerce: normalizeMultiValue,
+      describe: "Allowed mail recipients; sends to others are silently stripped",
+    })
+    .option("slack-allow-channels", {
+      type: "array",
+      string: true,
+      default: [],
+      coerce: normalizeMultiValue,
+      describe: "Allowed Slack channels; sends to others are rejected",
+    })
+    .option("send-rate-limit", {
+      type: "number",
+      default: 0,
+      coerce: (value: number) => {
+        if (value != null && (!Number.isFinite(value) || value < 0))
+          throw new Error("--send-rate-limit must be a non-negative number")
+        return Math.floor(value)
+      },
+      describe: "Max sends per minute across all platforms (0 = unlimited)",
+    })
     .option("verbose", {
       alias: "v",
       type: "boolean",
@@ -27,25 +60,40 @@ export let configureServeCli = (cli: Argv) =>
       describe: "Print diagnostic details to stderr",
     })
     .example("$0 --token=mysecret", "Start server on default port with auth token")
-    .example("$0 --port=8080 --host=0.0.0.0 --token=mysecret", "Bind to all interfaces on port 8080")
+    .example("$0 --token=mysecret --mail-allow-to=a@x.com,b@x.com", "Only allow sends to a@x.com and b@x.com")
+    .example("$0 --token=mysecret --slack-allow-channels=general,alerts", "Only allow Slack posts to #general and #alerts")
+    .example("$0 --token=mysecret --send-rate-limit=10", "Cap all sends at 10 per minute")
     .epilog(
       [
         "Authentication:",
         "  Every request must include the header: X-Auth-Token: <token>",
         "  Requests without a valid token receive 401 Unauthorized.",
         "",
+        "Send filtering:",
+        "  --mail-allow-to restricts outbound email recipients. Disallowed addresses",
+        "  are silently stripped from to/cc/bcc. If no allowed recipients remain, the",
+        "  request returns 400. Omit to allow all recipients.",
+        "",
+        "  --slack-allow-channels restricts which Slack channels can be posted to.",
+        "  Sends to disallowed channels return 400. Omit to allow all channels.",
+        "",
+        "Rate limiting:",
+        "  --send-rate-limit sets a global per-minute cap on sends (mail + Slack",
+        "  combined). Excess requests return 429 with a Retry-After hint. Set to 0",
+        "  (default) to disable rate limiting.",
+        "",
         "Endpoints (all POST, JSON body):",
         "  /api/mail/search      — Search Gmail messages",
         "  /api/mail/count       — Count Gmail results",
         "  /api/mail/thread      — Get all messages in a thread",
         "  /api/mail/read        — Read a single message",
-        "  /api/mail/send        — Send an email",
+        "  /api/mail/send        — Send an email (subject to filtering/rate limit)",
         "  /api/mail/mark-read   — Mark a message as read",
         "  /api/mail/archive     — Archive a message",
         "  /api/mail/accounts    — List configured mail accounts",
         "  /api/slack/search     — Search Slack messages",
         "  /api/slack/read       — Read a Slack message",
-        "  /api/slack/send       — Post a Slack message",
+        "  /api/slack/send       — Post a Slack message (subject to filtering/rate limit)",
         "  /api/slack/accounts   — List configured Slack workspaces",
         "  /api/ingest           — One-shot ingest across accounts",
         "",
@@ -64,5 +112,8 @@ export let parseServeCli = async (args: string[], scriptName = "messagemon serve
     host: argv.host,
     token: argv.token,
     verbose: argv.verbose,
+    mailAllowTo: argv.mailAllowTo,
+    slackAllowChannels: argv.slackAllowChannels,
+    sendRateLimit: argv.sendRateLimit,
   })
 }

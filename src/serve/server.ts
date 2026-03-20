@@ -201,36 +201,6 @@ let handleMailRead = async (body: unknown) => {
   return { status: 200, data: toUnifiedMessage(r.data) }
 }
 
-let handleMailSend = async (body: unknown) => {
-  let v = validate(MailSendRequest, body)
-  if (!v.success) return { status: 400, error: v.error }
-  let p = v.data
-
-  let raw = buildRawMessage({
-    from: p.from,
-    to: p.to,
-    cc: p.cc,
-    bcc: p.bcc,
-    replyTo: p.replyTo,
-    inReplyTo: p.inReplyTo,
-    references: p.references,
-    messageId: p.messageId,
-    subject: p.subject,
-    body: p.body,
-    attach: [],
-  })
-
-  let client = gmailClient(p.account)
-  let r = await client.users.messages.send({
-    userId: "me",
-    requestBody: {
-      raw: base64url(raw),
-      ...(p.threadId ? { threadId: p.threadId } : {}),
-    },
-  })
-  return { status: 200, data: r.data }
-}
-
 let handleMailMarkRead = async (body: unknown) => {
   let v = validate(MailModifyRequest, body)
   if (!v.success) return { status: 400, error: v.error }
@@ -335,34 +305,6 @@ let handleSlackRead = async (body: unknown) => {
   return { status: 200, data: unified }
 }
 
-let handleSlackSend = async (body: unknown) => {
-  let v = validate(SlackSendRequest, body)
-  if (!v.success) return { status: 400, error: v.error }
-  let p = v.data
-
-  let clients = slackClients(p.account)
-  let sendClient = p.asUser && clients.user ? clients.user : clients.bot
-
-  // Resolve channel name
-  let channelId = p.channel
-  if (channelId.startsWith("#")) {
-    let r = await clients.bot.conversations.list({
-      types: "public_channel,private_channel",
-      limit: 1000,
-    })
-    let match = (r.channels ?? []).find(c => c.name === channelId.replace(/^#/, ""))
-    if (!match?.id) return { status: 404, error: `Channel "${channelId}" not found` }
-    channelId = match.id
-  }
-
-  let r = await sendClient.chat.postMessage({
-    channel: channelId,
-    text: p.text,
-    thread_ts: p.threadTs,
-  })
-  return { status: 200, data: { ok: r.ok, ts: r.ts, channel: r.channel } }
-}
-
 let handleSlackAccounts = async (body: unknown) => {
   let { accounts } = listSlackAccounts()
   return { status: 200, data: { accounts } }
@@ -424,25 +366,159 @@ let handleIngest = async (body: unknown) => {
 }
 
 // ---------------------------------------------------------------------------
-// Route table
+// Send filtering
+// ---------------------------------------------------------------------------
+
+let filterMailRecipients = (addresses: string[], allowList: string[]): string[] => {
+  if (allowList.length === 0) return addresses
+  let allowed = new Set(allowList.map(a => a.toLowerCase()))
+  return addresses.filter(addr => {
+    // Extract email from "Name <email>" format
+    let match = addr.match(/<([^>]+)>/)
+    let email = (match ? match[1] : addr).toLowerCase().trim()
+    return allowed.has(email)
+  })
+}
+
+let isSlackChannelAllowed = (channel: string, allowList: string[]): boolean => {
+  if (allowList.length === 0) return true
+  let normalized = channel.replace(/^#/, "").toLowerCase()
+  return allowList.some(c => c.replace(/^#/, "").toLowerCase() === normalized)
+}
+
+// ---------------------------------------------------------------------------
+// Send rate limiter (fixed-window, per-minute)
+// ---------------------------------------------------------------------------
+
+let createRateLimiter = (maxPerMinute: number) => {
+  let windowStart = Date.now()
+  let count = 0
+
+  return {
+    check(): { allowed: true } | { allowed: false; retryAfterMs: number } {
+      if (maxPerMinute <= 0) return { allowed: true }
+      let now = Date.now()
+      if (now - windowStart >= 60_000) {
+        windowStart = now
+        count = 0
+      }
+      if (count >= maxPerMinute) {
+        let retryAfterMs = 60_000 - (now - windowStart)
+        return { allowed: false, retryAfterMs }
+      }
+      count += 1
+      return { allowed: true }
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Route table (built per server instance to close over opts)
 // ---------------------------------------------------------------------------
 
 type Handler = (body: unknown) => Promise<{ status: number; data?: unknown; error?: string }>
 
-let routes: Record<string, Handler> = {
-  "POST /api/mail/search": handleMailSearch,
-  "POST /api/mail/count": handleMailCount,
-  "POST /api/mail/thread": handleMailThread,
-  "POST /api/mail/read": handleMailRead,
-  "POST /api/mail/send": handleMailSend,
-  "POST /api/mail/mark-read": handleMailMarkRead,
-  "POST /api/mail/archive": handleMailArchive,
-  "POST /api/mail/accounts": handleMailAccounts,
-  "POST /api/slack/search": handleSlackSearch,
-  "POST /api/slack/read": handleSlackRead,
-  "POST /api/slack/send": handleSlackSend,
-  "POST /api/slack/accounts": handleSlackAccounts,
-  "POST /api/ingest": handleIngest,
+let buildRoutes = (opts: ServeOptions): Record<string, Handler> => {
+  let rateLimiter = createRateLimiter(opts.sendRateLimit)
+
+  let guardedMailSend: Handler = async (body) => {
+    let v = validate(MailSendRequest, body)
+    if (!v.success) return { status: 400, error: v.error }
+    let p = v.data
+
+    // Rate limit
+    let rl = rateLimiter.check()
+    if (!rl.allowed) {
+      return { status: 429, error: `Rate limit exceeded (${opts.sendRateLimit}/min). Retry after ${Math.ceil(rl.retryAfterMs / 1000)}s.` }
+    }
+
+    // Filter recipients
+    let to = filterMailRecipients([p.to], opts.mailAllowTo)
+    let cc = filterMailRecipients(p.cc, opts.mailAllowTo)
+    let bcc = filterMailRecipients(p.bcc, opts.mailAllowTo)
+
+    if (to.length === 0 && cc.length === 0 && bcc.length === 0) {
+      return { status: 400, error: "No allowed recipients remain after filtering. Check --mail-allow-to." }
+    }
+
+    let raw = buildRawMessage({
+      from: p.from,
+      to: to[0] ?? "",
+      cc,
+      bcc,
+      replyTo: p.replyTo,
+      inReplyTo: p.inReplyTo,
+      references: p.references,
+      messageId: p.messageId,
+      subject: p.subject,
+      body: p.body,
+      attach: [],
+    })
+
+    let client = gmailClient(p.account)
+    let r = await client.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: base64url(raw),
+        ...(p.threadId ? { threadId: p.threadId } : {}),
+      },
+    })
+    return { status: 200, data: r.data }
+  }
+
+  let guardedSlackSend: Handler = async (body) => {
+    let v = validate(SlackSendRequest, body)
+    if (!v.success) return { status: 400, error: v.error }
+    let p = v.data
+
+    // Rate limit
+    let rl = rateLimiter.check()
+    if (!rl.allowed) {
+      return { status: 429, error: `Rate limit exceeded (${opts.sendRateLimit}/min). Retry after ${Math.ceil(rl.retryAfterMs / 1000)}s.` }
+    }
+
+    // Channel allowlist
+    if (!isSlackChannelAllowed(p.channel, opts.slackAllowChannels)) {
+      return { status: 400, error: `Channel "${p.channel}" is not in --slack-allow-channels.` }
+    }
+
+    let clients = slackClients(p.account)
+    let sendClient = p.asUser && clients.user ? clients.user : clients.bot
+
+    let channelId = p.channel
+    if (channelId.startsWith("#")) {
+      let r = await clients.bot.conversations.list({
+        types: "public_channel,private_channel",
+        limit: 1000,
+      })
+      let match = (r.channels ?? []).find(c => c.name === channelId.replace(/^#/, ""))
+      if (!match?.id) return { status: 404, error: `Channel "${channelId}" not found` }
+      channelId = match.id
+    }
+
+    let r = await sendClient.chat.postMessage({
+      channel: channelId,
+      text: p.text,
+      thread_ts: p.threadTs,
+    })
+    return { status: 200, data: { ok: r.ok, ts: r.ts, channel: r.channel } }
+  }
+
+  return {
+    "POST /api/mail/search": handleMailSearch,
+    "POST /api/mail/count": handleMailCount,
+    "POST /api/mail/thread": handleMailThread,
+    "POST /api/mail/read": handleMailRead,
+    "POST /api/mail/send": guardedMailSend,
+    "POST /api/mail/mark-read": handleMailMarkRead,
+    "POST /api/mail/archive": handleMailArchive,
+    "POST /api/mail/accounts": handleMailAccounts,
+    "POST /api/slack/search": handleSlackSearch,
+    "POST /api/slack/read": handleSlackRead,
+    "POST /api/slack/send": guardedSlackSend,
+    "POST /api/slack/accounts": handleSlackAccounts,
+    "POST /api/ingest": handleIngest,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -454,9 +530,14 @@ export type ServeOptions = {
   token: string
   host: string
   verbose: boolean
+  mailAllowTo: string[]
+  slackAllowChannels: string[]
+  sendRateLimit: number
 }
 
 export let createServer = (opts: ServeOptions) => {
+  let routes = buildRoutes(opts)
+
   let server = http.createServer(async (req, res) => {
     // CORS preflight
     if (req.method === "OPTIONS") {
@@ -516,7 +597,10 @@ export let startServer = (opts: ServeOptions) =>
     server.on("error", reject)
     server.listen(opts.port, opts.host, () => {
       console.log(`[messagemon] server listening on http://${opts.host}:${opts.port}`)
-      console.log(`[messagemon] ${Object.keys(routes).length} routes registered`)
+      console.log(`[messagemon] 13 routes registered`)
+      if (opts.mailAllowTo.length) console.log(`[messagemon] mail-allow-to: ${opts.mailAllowTo.join(", ")}`)
+      if (opts.slackAllowChannels.length) console.log(`[messagemon] slack-allow-channels: ${opts.slackAllowChannels.join(", ")}`)
+      if (opts.sendRateLimit > 0) console.log(`[messagemon] send-rate-limit: ${opts.sendRateLimit}/min`)
       resolve(server)
     })
   })
