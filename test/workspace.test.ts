@@ -9,6 +9,7 @@ let prevCwd: string
 let workspaceStore: typeof import("../src/workspace/store")
 let workspaceApi: typeof import("../src/workspace/api")
 let draftStore: typeof import("../src/draft/store")
+let workspaceAccounts: typeof import("../src/workspace/accounts")
 
 let makeDraft = (id: string) => ({
   id,
@@ -32,6 +33,7 @@ before(async () => {
   workspaceStore = await import("../src/workspace/store")
   workspaceApi = await import("../src/workspace/api")
   draftStore = await import("../src/draft/store")
+  workspaceAccounts = await import("../src/workspace/accounts")
 })
 
 after(() => {
@@ -148,5 +150,32 @@ describe("workspace API handlers", () => {
     })
     assert.equal(action.status, 200)
     assert.throws(() => draftStore.loadDraft("gamma", "draft-2"), /not found/)
+  })
+})
+
+describe("workspace init account inference", () => {
+  it("infers local gmail and slack accounts when --account is omitted", async () => {
+    fs.mkdirSync(path.join(tmpDir, ".msgmon", "gmail", "tokens"), { recursive: true })
+    fs.mkdirSync(path.join(tmpDir, ".msgmon", "slack", "tokens"), { recursive: true })
+    fs.writeFileSync(path.join(tmpDir, ".msgmon", "gmail", "tokens", "alpha.json"), "{}\n")
+    fs.writeFileSync(path.join(tmpDir, ".msgmon", "gmail", "tokens", "beta.json"), "{}\n")
+    fs.writeFileSync(path.join(tmpDir, ".msgmon", "slack", "tokens", "drinksuperoot.json"), "{}\n")
+
+    assert.deepEqual(
+      workspaceAccounts.inferWorkspaceAccounts(),
+      ["alpha", "beta", "slack:drinksuperoot"],
+    )
+  })
+
+  it("errors when no accounts are provided and no local tokens exist", async () => {
+    fs.rmSync(path.join(tmpDir, ".msgmon", "gmail"), { recursive: true, force: true })
+    fs.rmSync(path.join(tmpDir, ".msgmon", "slack"), { recursive: true, force: true })
+    assert.deepEqual(workspaceAccounts.inferWorkspaceAccounts(), [])
+  })
+
+  it("returns only local token-backed accounts", async () => {
+    fs.mkdirSync(path.join(tmpDir, ".msgmon", "gmail", "tokens"), { recursive: true })
+    fs.writeFileSync(path.join(tmpDir, ".msgmon", "gmail", "tokens", "manual.json"), "{}\n")
+    assert.deepEqual(workspaceAccounts.inferWorkspaceAccounts(), ["manual"])
   })
 })

@@ -1,6 +1,7 @@
 import yargs from "yargs"
 import type { Argv } from "yargs"
 import { initWorkspace, loadWorkspaceConfig, listWorkspaceIds } from "./store"
+import { inferWorkspaceAccounts } from "./accounts"
 import { refreshWorkspace } from "./runtime"
 import { verboseLog } from "../Verbose"
 
@@ -33,9 +34,8 @@ export let configureWorkspaceCli = (cli: Argv) =>
           .option("account", {
             type: "array",
             string: true,
-            default: ["default"],
             coerce: normalizeMultiValue,
-            describe: "Account(s) to ingest from (repeatable, comma-separated)",
+            describe: "Account(s) to ingest from (repeatable, comma-separated). If omitted, infer from local .msgmon token files.",
           })
           .option("query", {
             type: "string",
@@ -43,9 +43,15 @@ export let configureWorkspaceCli = (cli: Argv) =>
             describe: "Default ingest query",
           }),
       async argv => {
+        let inferredAccounts = !argv.account || argv.account.length === 0
+        let accounts: string[] = inferredAccounts ? inferWorkspaceAccounts() : (argv.account ?? [])
+        if (accounts.length === 0) {
+          throw new Error("No accounts provided and none inferred from ./.msgmon/<platform>/tokens/")
+        }
+
         let result = initWorkspace(argv.id!, {
           name: argv.name,
-          accounts: argv.account,
+          accounts,
           query: argv.query,
         })
 
@@ -54,6 +60,7 @@ export let configureWorkspaceCli = (cli: Argv) =>
           workspaceId: result.config.id,
           path: result.path,
           config: result.config,
+          inferredAccounts,
         }, null, 2))
       },
     )

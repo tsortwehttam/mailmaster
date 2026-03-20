@@ -1,5 +1,7 @@
 import http from "node:http"
+import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { verboseLog } from "../Verbose"
 import type { MessageSource } from "../ingest/ingest"
@@ -536,6 +538,108 @@ type RouteDef = {
   capabilities: Capability[]
 }
 
+let packageVersion = () => {
+  try {
+    let serverDir = path.dirname(fileURLToPath(import.meta.url))
+    let packagePath = path.resolve(serverDir, "..", "..", "package.json")
+    return JSON.parse(fs.readFileSync(packagePath, "utf8")).version ?? "0.0.0"
+  } catch {
+    return "0.0.0"
+  }
+}
+
+let routeCatalog = () => ([
+  { method: "GET", path: "/.well-known/llms.txt", auth: "none", purpose: "Human-readable agent bootstrap instructions" },
+  { method: "GET", path: "/api/agent/manifest", auth: "valid token", purpose: "Structured agent bootstrap manifest" },
+  { method: "GET", path: "/api/health", auth: "read", purpose: "Health check" },
+  { method: "POST", path: "/api/workspace/export", auth: "workspace_read", purpose: "Export agent-safe workspace snapshot or bundle" },
+  { method: "POST", path: "/api/workspace/bootstrap", auth: "workspace_write", purpose: "Create a server-owned workspace" },
+  { method: "POST", path: "/api/workspace/import", auth: "workspace_write", purpose: "Import a workspace bundle" },
+  { method: "POST", path: "/api/workspace/refresh", auth: "ingest", purpose: "Ingest new messages into a workspace inbox" },
+  { method: "POST", path: "/api/workspace/push", auth: "workspace_write", purpose: "Push bounded writable file edits" },
+  { method: "POST", path: "/api/workspace/actions", auth: "workspace_actions", purpose: "Apply privileged workspace actions" },
+  { method: "POST", path: "/api/draft/compose", auth: "drafts", purpose: "Create a workspace-owned draft" },
+  { method: "POST", path: "/api/draft/list", auth: "drafts", purpose: "List workspace drafts" },
+  { method: "POST", path: "/api/draft/show", auth: "drafts", purpose: "Show a workspace draft" },
+  { method: "POST", path: "/api/draft/update", auth: "drafts", purpose: "Update a workspace draft" },
+  { method: "POST", path: "/api/draft/send", auth: "send", purpose: "Send a draft through policy checks" },
+  { method: "POST", path: "/api/draft/delete", auth: "drafts", purpose: "Delete a workspace draft" },
+  { method: "POST", path: "/api/gmail/search", auth: "read", purpose: "Search Gmail" },
+  { method: "POST", path: "/api/gmail/thread", auth: "read", purpose: "Fetch full Gmail thread context" },
+  { method: "POST", path: "/api/gmail/read", auth: "read", purpose: "Read a Gmail message" },
+  { method: "POST", path: "/api/gmail/send", auth: "send", purpose: "Send Gmail" },
+  { method: "POST", path: "/api/gmail/mark-read", auth: "send", purpose: "Mark Gmail message read" },
+  { method: "POST", path: "/api/gmail/archive", auth: "send", purpose: "Archive Gmail message" },
+  { method: "POST", path: "/api/slack/search", auth: "read", purpose: "Search Slack" },
+  { method: "POST", path: "/api/slack/read", auth: "read", purpose: "Read a Slack message" },
+  { method: "POST", path: "/api/slack/send", auth: "send", purpose: "Send Slack message" },
+  { method: "POST", path: "/api/ingest", auth: "ingest", purpose: "One-shot ingest across accounts" },
+]) as const
+
+let buildLlmsText = (opts: ServeOptions) => [
+  "# msgmon serve",
+  "",
+  "msgmon serve is a privileged message-control server. It holds credentials,",
+  "enforces policy, and exposes an agent-safe workspace sync model over HTTP.",
+  "",
+  "Trust model:",
+  "- The server is trusted and keeps OAuth tokens plus outbound policy.",
+  "- The agent is untrusted or semi-trusted and should work from exported files.",
+  "- The agent must send privileged actions back through the API.",
+  "",
+  "Bootstrap flow:",
+  "1. Read this file.",
+  "2. Call GET /api/agent/manifest with X-Auth-Token.",
+  "3. Call POST /api/workspace/export to materialize a local workspace mirror.",
+  "4. Edit only writable files such as status.md, drafts/, and corpus/.",
+  "5. Send local changes back with POST /api/workspace/push.",
+  "6. Request privileged actions through POST /api/workspace/actions or the send endpoints.",
+  "",
+  "Auth:",
+  "- Header: X-Auth-Token: <token>",
+  "- Tokens may be capability-scoped.",
+  "",
+  `Host: http://${opts.host}:${opts.port}`,
+  "Manifest: /api/agent/manifest",
+  "",
+  "Key endpoints:",
+  ...routeCatalog().map(route => `- ${route.method} ${route.path} — ${route.purpose}`),
+  "",
+  "Recommended agent behavior:",
+  "- Never send without explicit user approval.",
+  "- Treat workspace.json and inbox/ as read-only.",
+  "- Use polling rather than assuming push transport.",
+].join("\n")
+
+let buildAgentManifest = (tokenSpec: TokenSpec) => ({
+  name: "msgmon serve",
+  version: packageVersion(),
+  protocolVersion: "msgmon.agent.v1",
+  description: "Privileged message-control plane with agent-safe workspace sync.",
+  auth: {
+    header: "X-Auth-Token",
+    tokenCapabilities: tokenSpec.capabilities,
+  },
+  recommendedPollingIntervalMs: 5000,
+  workspaceSync: {
+    exportRoute: "/api/workspace/export",
+    pushRoute: "/api/workspace/push",
+    bootstrapRoute: "/api/workspace/bootstrap",
+    importRoute: "/api/workspace/import",
+    refreshRoute: "/api/workspace/refresh",
+    writablePaths: ["status.md", "instructions.md", "user-profile.md", "drafts/**", "corpus/**"],
+    readOnlyPaths: ["workspace.json", "inbox/**"],
+  },
+  workflows: [
+    "Pull a workspace snapshot into an isolated local directory.",
+    "Read inbox items and update status.md.",
+    "Create or revise drafts under drafts/.",
+    "Push bounded local changes back to the server.",
+    "Ask for user approval before any send/archive/mark-read action.",
+  ],
+  routes: routeCatalog(),
+})
+
 let buildRoutes = (opts: ServeOptions): Record<string, RouteDef> => {
   let rateLimiter = createRateLimiter(opts.sendRateLimit)
 
@@ -746,6 +850,7 @@ let hasCapabilities = (tokenSpec: TokenSpec, required: Capability[]) =>
 
 export let createServer = (opts: ServeOptions) => {
   let routes = buildRoutes(opts)
+  let llmsText = buildLlmsText(opts)
 
   let server = http.createServer(async (req, res) => {
     // CORS preflight
@@ -765,6 +870,26 @@ export let createServer = (opts: ServeOptions) => {
     let route = routes[routeKey]
 
     if (!route) {
+      if (req.method === "GET" && req.url === "/.well-known/llms.txt") {
+        res.writeHead(200, {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Length": Buffer.byteLength(llmsText),
+        })
+        res.end(llmsText)
+        return
+      }
+      if (req.method === "GET" && req.url === "/api/agent/manifest") {
+        let authToken = req.headers["x-auth-token"]
+        let tokenSpec = typeof authToken === "string"
+          ? opts.tokens.find(token => token.token === authToken)
+          : undefined
+        if (!tokenSpec) {
+          fail(res, 401, "Unauthorized: invalid or missing X-Auth-Token header")
+          return
+        }
+        ok(res, buildAgentManifest(tokenSpec))
+        return
+      }
       // Try GET /api/health as a special case (no body needed)
       if (req.method === "GET" && req.url === "/api/health") {
         let authToken = req.headers["x-auth-token"]

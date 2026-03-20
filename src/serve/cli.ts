@@ -1,6 +1,7 @@
 import yargs from "yargs"
 import type { Argv } from "yargs"
 import { startServer, type Capability, type TokenSpec } from "./server"
+import { generateServeToken, saveServeLocalConfig } from "./localConfig"
 
 let normalizeMultiValue = (value: unknown) => {
   if (value == null) return []
@@ -91,6 +92,10 @@ export let configureServeCli = (cli: Argv) =>
         "  --token grants full access. --scoped-token grants only named capabilities.",
         "  Capabilities: read, ingest, drafts, send, workspace_read, workspace_write, workspace_actions.",
         "",
+        "Discovery:",
+        "  GET /.well-known/llms.txt  — Human-readable bootstrap for coding agents",
+        "  GET /api/agent/manifest    — Structured bootstrap manifest (requires auth)",
+        "",
         "Send filtering:",
         "  --gmail-allow-to restricts outbound email recipients. Disallowed addresses",
         "  are silently stripped from to/cc/bcc. If no allowed recipients remain, the",
@@ -104,7 +109,7 @@ export let configureServeCli = (cli: Argv) =>
         "  combined). Excess requests return 429 with a Retry-After hint. Set to 0",
         "  (default) to disable rate limiting.",
         "",
-        "Endpoints (all POST, JSON body):",
+        "Endpoints (mostly POST, JSON body):",
         "  /api/gmail/search      — Search Gmail messages",
         "  /api/gmail/count       — Count Gmail results",
         "  /api/gmail/thread      — Get all messages in a thread",
@@ -143,11 +148,26 @@ export let configureServeCli = (cli: Argv) =>
 
 export let parseServeCli = async (args: string[], scriptName = "msgmon serve") => {
   let argv = await configureServeCli(yargs(args).scriptName(scriptName)).parseAsync()
+  let generatedToken: string | undefined
   let tokens: TokenSpec[] = [
     ...(argv.token as string[]).map(token => ({ token, capabilities: ALL_CAPABILITIES })),
     ...(argv.scopedToken as string[]).map(parseScopedToken),
   ]
-  if (tokens.length === 0) throw new Error("At least one --token or --scoped-token is required")
+  if (tokens.length === 0) {
+    generatedToken = generateServeToken()
+    tokens = [{ token: generatedToken, capabilities: ALL_CAPABILITIES }]
+  }
+  let singleFullAccessToken = tokens.length === 1 && tokens[0]!.capabilities.length === 1 && tokens[0]!.capabilities[0] === "all"
+    ? tokens[0]!.token
+    : undefined
+  let localConfig = saveServeLocalConfig({
+    serverUrl: `http://${argv.host}:${argv.port}`,
+    token: singleFullAccessToken,
+  })
+  if (generatedToken) {
+    console.log(`[msgmon] generated local auth token: ${generatedToken}`)
+    console.log(`[msgmon] saved local server config: ${localConfig.serverUrl} -> ${singleFullAccessToken ? "token saved" : "no default token saved"}`)
+  }
   await startServer({
     port: argv.port,
     host: argv.host,

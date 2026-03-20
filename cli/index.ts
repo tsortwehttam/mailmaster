@@ -11,10 +11,11 @@ import { parseWhatsAppCli } from "../platforms/whatsapp"
 import { parseServeCli } from "../src/serve/cli"
 import { parseDraftCli } from "../src/draft/cli"
 import { parseWorkspaceCli } from "../src/workspace/cli"
+import { parseSessionCli, parseSyncCli } from "../src/session/cli"
 import { verboseLog } from "../src/Verbose"
 
 let args = hideBin(process.argv)
-let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "help"])
+let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "sync", "session", "help"])
 let verbose = args.includes("--verbose") || args.includes("-v")
 let commandIndex = args.findIndex(x => !x.startsWith("-"))
 let command = commandIndex >= 0 ? args[commandIndex] : undefined
@@ -25,7 +26,7 @@ let helpBuilder = (y: import("yargs").Argv) =>
   y
     .positional("platform", {
       type: "string",
-      choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace"] as const,
+      choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "sync", "session"] as const,
       describe: "Platform or command to show help for",
     })
     .positional("command", {
@@ -49,6 +50,8 @@ let cli = yargs(args)
   .command("serve", "HTTP API server: secret-holding control plane with policy-gated workspace sync")
   .command("draft", "Compose, list, send, edit, and delete message drafts")
   .command("workspace", "Create and refresh server-managed agent workspaces")
+  .command("sync", "Sync an agent-safe local workspace mirror against serve")
+  .command("session", "Bootstrap and supervise a local agent session against serve")
   .command("slack", "Slack: auth, search, read, send messages")
   .command("teams", "Teams: search, read, send messages (planned)")
   .command("whatsapp", "WhatsApp: read, send messages (planned)")
@@ -74,6 +77,8 @@ let cli = yargs(args)
       else if (platform === "whatsapp") await parseWhatsAppCli(helpArgs, "msgmon whatsapp")
       else if (platform === "draft") await parseDraftCli(helpArgs, "msgmon draft")
       else if (platform === "workspace") await parseWorkspaceCli(helpArgs, "msgmon workspace")
+      else if (platform === "sync") await parseSyncCli(helpArgs, "msgmon sync")
+      else if (platform === "session") await parseSessionCli(helpArgs, "msgmon session")
     },
   )
   .example("$0 help", "Show top-level help")
@@ -97,6 +102,8 @@ let cli = yargs(args)
       "  serve     — Secret-holding HTTP control plane with policy-gated workspace sync.",
       "  draft     — Compose, list, send, edit, and delete message drafts.",
       "  workspace — Create and refresh server-managed agent workspaces.",
+      "  sync      — Pull, push, and watch a local agent workspace mirror.",
+      "  session   — Bootstrap a local agent session and optional watcher.",
       "",
       "Platforms:",
       "  slack     — Slack via @slack/web-api",
@@ -280,6 +287,28 @@ else if (!dispatched && command === "workspace") {
 }
 
 // ---------------------------------------------------------------------------
+// Sync — pull/push/watch local agent workspace mirrors
+// ---------------------------------------------------------------------------
+
+else if (!dispatched && command === "sync") {
+  parseSyncCli([...forwardedVerboseArgs, ...commandArgs], "msgmon sync").catch(e => {
+    console.error(e?.message ?? e)
+    process.exit(1)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Session — bootstrap and supervise local agent sessions
+// ---------------------------------------------------------------------------
+
+else if (!dispatched && command === "session") {
+  parseSessionCli([...forwardedVerboseArgs, ...commandArgs], "msgmon session").catch(e => {
+    console.error(e?.message ?? e)
+    process.exit(1)
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
 
@@ -309,6 +338,10 @@ else if (!dispatched && command === "help") {
     parseDraftCli([...forwardedVerboseArgs, "--help"], "msgmon draft")
   } else if (subhelp === "workspace") {
     parseWorkspaceCli([...forwardedVerboseArgs, "--help"], "msgmon workspace")
+  } else if (subhelp === "sync") {
+    parseSyncCli([...forwardedVerboseArgs, "--help"], "msgmon sync")
+  } else if (subhelp === "session") {
+    parseSessionCli([...forwardedVerboseArgs, "--help"], "msgmon session")
   } else {
     cli.parseAsync().catch(e => {
       console.error(e?.message ?? e)

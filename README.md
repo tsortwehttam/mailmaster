@@ -155,6 +155,7 @@ msgmon serve --token=mysecret --port=8080 --host=0.0.0.0
 msgmon serve --token=mysecret --gmail-allow-to=a@x.com,b@x.com --send-rate-limit=10
 msgmon serve --token=mysecret --slack-allow-channels=general,alerts
 msgmon serve --scoped-token=reader=read,workspace_read --scoped-token=writer=workspace_write,drafts
+msgmon serve
 ```
 
 Every request must include the header `X-Auth-Token: <token>`. All endpoints accept `POST` with a JSON body and return `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`. Request bodies are validated with Zod.
@@ -163,6 +164,10 @@ Every request must include the header `X-Auth-Token: <token>`. All endpoints acc
 - `--token` creates a full-access token.
 - `--scoped-token=<token>=<cap1>,<cap2>` creates a restricted token.
 - Available capabilities: `read`, `ingest`, `drafts`, `send`, `workspace_read`, `workspace_write`, `workspace_actions`.
+- If you omit both `--token` and `--scoped-token`, `serve` generates a secure random full-access token and saves local connection info to `./.msgmon/serve.json`.
+- Discovery endpoints:
+  - `GET /.well-known/llms.txt`
+  - `GET /api/agent/manifest`
 
 **Send filtering:**
 - `--gmail-allow-to` — comma-separated list of allowed email recipients. Disallowed addresses are silently stripped from to/cc/bcc. If no allowed recipients remain, the request returns 400. Omit to allow all.
@@ -196,6 +201,8 @@ Every request must include the header `X-Auth-Token: <token>`. All endpoints acc
 | `POST /api/workspace/refresh` | Ingest new messages into workspace inbox (`{ workspaceId, maxResults?, markRead?, saveAttachments?, seed? }`) |
 | `POST /api/workspace/push` | Push bounded file edits (`{ workspaceId, baseRevision, files[] }`) |
 | `POST /api/workspace/actions` | Apply privileged workspace actions (`{ workspaceId, actions[] }`) |
+| `GET /.well-known/llms.txt` | Human-readable bootstrap instructions for coding agents |
+| `GET /api/agent/manifest` | Structured bootstrap manifest for coding agents |
 | `GET /api/health` | Health check (returns `{ status: "ok", uptime }`) |
 
 **Attachments** (for `/api/gmail/send` and `/api/slack/send`): pass an `attachments` array in the JSON body. Each attachment is `{ filename, data, contentType? }` where `data` is base64-encoded file content. Slack file uploads require the `files:write` bot/user scope.
@@ -207,6 +214,36 @@ Every request must include the header `X-Auth-Token: <token>`. All endpoints acc
 - `/api/workspace/push` accepts bounded changes back for writable files such as `status.md`, `drafts/*.json`, and `corpus/**`.
 - `/api/workspace/actions` is the policy gate for privileged operations such as sending drafts, marking messages read, and archiving Gmail.
 - Hidden server files such as state and workspace-local credentials are not included in exports.
+
+### `msgmon sync`
+
+Client-side filesystem sync for isolated agent runtimes. This mirrors a server-owned workspace into a local directory, keeps session metadata under `.msgmon-session/`, and lets the agent work directly on files.
+
+```bash
+msgmon sync pull --server=http://127.0.0.1:3271 --token=reader --workspace=inbox-agent
+msgmon sync push --workspace=inbox-agent
+msgmon sync watch --server=http://127.0.0.1:3271 --token=reader --workspace=inbox-agent
+```
+
+By default the local mirror lives at `./.msgmon/agent/<workspace>/`. `pull` refuses to overwrite locally modified writable files unless `--force` is passed. `push` sends only bounded writable paths back to the server: `status.md`, `instructions.md`, `user-profile.md`, `drafts/**`, and `corpus/**`.
+`watch` automatically pushes bounded local file changes before each pull cycle unless you pass `--no-auto-push`.
+
+### `msgmon session`
+
+Bootstrap helper for the “one command” terminal workflow. It performs an initial sync, optionally starts a detached watcher, and can launch a coding-agent command inside the synced directory.
+
+```bash
+msgmon session start \
+  --workspace=inbox-agent \
+  --agent-command='codex .'
+```
+
+Session metadata lives under `./.msgmon/agent/<workspace>/.msgmon-session/`. Use:
+
+```bash
+msgmon session status --workspace=inbox-agent
+msgmon session stop --workspace=inbox-agent
+```
 
 ### Sinks
 
@@ -317,10 +354,11 @@ The secure operating model is:
 1. Run `msgmon serve` in the trusted environment that holds credentials.
 2. Create a workspace with `msgmon workspace init`.
 3. Refresh that workspace on the server with `msgmon workspace refresh` or `POST /api/workspace/refresh`.
-4. Export the workspace into an isolated agent runtime via `POST /api/workspace/export`.
-5. Let the agent read and edit the workspace files freely.
-6. Push allowed file changes back with `POST /api/workspace/push`.
-7. Route all privileged actions such as sending, mark-read, and archive through `POST /api/workspace/actions` or other `serve` endpoints.
+4. Let the agent discover the server via `GET /.well-known/llms.txt` and `GET /api/agent/manifest`.
+5. Mirror the workspace into an isolated local directory with `msgmon sync pull`.
+6. Let the agent read and edit the local files freely.
+7. Push allowed file changes back with `msgmon sync push` or `POST /api/workspace/push`.
+8. Route all privileged actions such as sending, mark-read, and archive through `POST /api/workspace/actions` or other `serve` endpoints.
 
 This keeps the agent file-native while keeping secrets and outbound policy on the server side.
 
@@ -359,10 +397,15 @@ msgmon serve \
   --gmail-allow-to=allowed@example.com \
   --send-rate-limit=5
 
-# The agent workflow is:
-# POST /api/workspace/export   — fetch agent-safe workspace snapshot
-# edit files in an isolated runtime
-# POST /api/workspace/push     — push status/draft changes back
+# In the isolated agent runtime:
+msgmon session start \
+  --workspace=inbox-agent \
+  --agent-command='codex .'
+
+# Then push local edits back with:
+msgmon sync push --workspace=inbox-agent
+
+# And use:
 # POST /api/workspace/actions  — ask the server to send or mutate remote state
 ```
 
