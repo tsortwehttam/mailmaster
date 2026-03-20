@@ -47,17 +47,6 @@ let platformCredentialsPaths = (platform: Platform) =>
 let platformTokenDirs = (platform: Platform) =>
   resolveConfigDirs().map(dir => path.resolve(dir, platform, "tokens"))
 
-// ---------------------------------------------------------------------------
-// Flat-layout paths (.msgmon/credentials.json, .msgmon/tokens/)
-// Used when no platform arg is passed — the default for all current callers.
-// ---------------------------------------------------------------------------
-
-let flatCredentialsPaths = () =>
-  resolveConfigDirs().map(dir => path.resolve(dir, "credentials.json"))
-
-let flatTokenDirs = () =>
-  resolveConfigDirs().map(dir => path.resolve(dir, "tokens"))
-
 export let GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.modify",
@@ -68,31 +57,19 @@ export let GMAIL_SCOPES = [
 // Resolution helpers
 // ---------------------------------------------------------------------------
 
-export let resolveCredentialsPaths = (platform?: Platform) => {
-  if (platform) return dedupe(platformCredentialsPaths(platform))
-  return dedupe(flatCredentialsPaths())
-}
+export let resolveCredentialsPaths = (platform: Platform) => dedupe(platformCredentialsPaths(platform))
 
-export let resolveCredentialsPath = (platform?: Platform) => {
+export let resolveCredentialsPath = (platform: Platform) => {
   let candidates = resolveCredentialsPaths(platform)
-  // Also check flat-layout paths when using platform-specific resolution
-  if (platform) {
-    candidates = dedupe([...candidates, ...flatCredentialsPaths()])
-  }
   return candidates.find(x => fs.existsSync(x)) ?? candidates[0]
 }
 
-export let resolveAllTokenDirs = (platform?: Platform) => {
-  if (platform) {
-    return dedupe([...platformTokenDirs(platform), ...flatTokenDirs()])
-  }
-  return dedupe(flatTokenDirs())
-}
+export let resolveAllTokenDirs = (platform: Platform) => dedupe(platformTokenDirs(platform))
 
-export let resolveTokenReadPathsForAccount = (account: string, platform?: Platform) =>
+export let resolveTokenReadPathsForAccount = (account: string, platform: Platform) =>
   resolveAllTokenDirs(platform).map(dir => path.resolve(dir, `${account}${TOKEN_FILE_EXTENSION}`))
 
-export let resolveTokenReadPathForAccount = (account: string, platform?: Platform) => {
+export let resolveTokenReadPathForAccount = (account: string, platform: Platform) => {
   let candidates = resolveTokenReadPathsForAccount(account, platform)
   let existing = candidates.find(x => fs.existsSync(x))
   if (!existing) {
@@ -101,10 +78,7 @@ export let resolveTokenReadPathForAccount = (account: string, platform?: Platfor
   return existing
 }
 
-export let resolveTokenWriteDir = (platform?: Platform) => {
-  if (platform) return path.resolve(PWD_CONFIG_DIR, platform, "tokens")
-  return path.resolve(PWD_CONFIG_DIR, "tokens")
-}
+export let resolveTokenWriteDir = (platform: Platform) => path.resolve(PWD_CONFIG_DIR, platform, "tokens")
 
-export let resolveTokenWritePathForAccount = (account: string, platform?: Platform) =>
+export let resolveTokenWritePathForAccount = (account: string, platform: Platform) =>
   path.resolve(resolveTokenWriteDir(platform), `${account}${TOKEN_FILE_EXTENSION}`)

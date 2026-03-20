@@ -11,8 +11,8 @@ import type { Argv } from "yargs"
 import { verboseLog } from "../../src/Verbose"
 
 let loadOAuth = (account: string, verbose = false) => {
-  let credentialsPath = resolveCredentialsPath()
-  let tokenPath = resolveTokenReadPathForAccount(account)
+  let credentialsPath = resolveCredentialsPath("gmail")
+  let tokenPath = resolveTokenReadPathForAccount(account, "gmail")
   verboseLog(verbose, "mail auth", { account, credentialsPath, tokenPath })
 
   let raw = JSON.parse(fs.readFileSync(credentialsPath, "utf8"))

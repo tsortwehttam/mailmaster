@@ -15,9 +15,9 @@ import type { Argv } from "yargs"
 import { verboseLog } from "../../src/Verbose"
 
 let authForAccount = async (account: string, verbose = false) => {
-  let credentialsPath = resolveCredentialsPath()
-  let tokenDir = resolveTokenWriteDir()
-  let tokenPath = resolveTokenWritePathForAccount(account)
+  let credentialsPath = resolveCredentialsPath("gmail")
+  let tokenDir = resolveTokenWriteDir("gmail")
+  let tokenPath = resolveTokenWritePathForAccount(account, "gmail")
   verboseLog(verbose, "auth target", { account, credentialsPath, tokenDir, tokenPath })
 
   fs.mkdirSync(tokenDir, { recursive: true })
@@ -46,7 +46,7 @@ export let configureAuthCli = (cli: Argv) =>
         "Output:",
         "- Prints `Saved <absolute token path>` on success.",
         "- The token file is used by `gmail` commands via the same `--account` value.",
-        "- Reads credentials from `./.msgmon/gmail/credentials.json`, then `<install-dir>/.msgmon/gmail/credentials.json`, then `~/.msgmon/gmail/credentials.json` (also checks legacy `.msgmon/credentials.json`).",
+        "- Reads credentials from `./.msgmon/gmail/credentials.json`, then `<install-dir>/.msgmon/gmail/credentials.json`, then `~/.msgmon/gmail/credentials.json`.",
         "- Writes token to `./.msgmon/gmail/tokens/` in the current working directory.",
       ].join("\n"),
     )

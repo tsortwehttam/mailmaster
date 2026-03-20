@@ -275,11 +275,11 @@ For Slack, `--query` accepts comma-separated channel names or IDs (e.g. `#genera
 
 Credentials and tokens are resolved in priority order:
 
-1. `./.msgmon/gmail/credentials.json` (project-local)
-2. `<install-dir>/.msgmon/gmail/credentials.json`
-3. `~/.msgmon/gmail/credentials.json`
+1. `./.msgmon/<platform>/credentials.json` (project-local)
+2. `<install-dir>/.msgmon/<platform>/credentials.json`
+3. `~/.msgmon/<platform>/credentials.json`
 
-Tokens are read from `<dir>/<platform>/tokens/<account>.json` across all three locations. Auth commands write tokens to `./.msgmon/<platform>/tokens/`.
+Tokens are read from `<dir>/<platform>/tokens/<account>.json` across all three locations. Auth commands write tokens to `./.msgmon/<platform>/tokens/`. There is no flat legacy fallback under `./.msgmon/credentials.json` or `./.msgmon/tokens/`.
 
 Slack tokens are stored at `.msgmon/slack/tokens/<account>.json` and contain `bot_token` (always) and optionally `user_token` (from OAuth).
 

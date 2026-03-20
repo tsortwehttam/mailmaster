@@ -9,7 +9,7 @@ import { verboseLog } from "../../src/Verbose"
 
 export let listAccounts = () => {
   let all = new Set<string>()
-  let dirs = resolveAllTokenDirs()
+  let dirs = resolveAllTokenDirs("gmail")
   for (let dir of dirs) {
     if (!fs.existsSync(dir)) continue
     for (let entry of fs.readdirSync(dir, { withFileTypes: true })) {
