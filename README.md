@@ -101,6 +101,34 @@ messagemon corpus --from=./inbox --out-dir=./corpus --chunk-chars=8000
 
 Outputs `messages.jsonl`, `chunks.jsonl`, `threads.jsonl`, and `summary.json`.
 
+### `messagemon serve`
+
+HTTP API server that exposes all commands as JSON endpoints with token authentication.
+
+```bash
+messagemon serve --token=mysecret
+messagemon serve --token=mysecret --port=8080 --host=0.0.0.0
+```
+
+Every request must include the header `X-Auth-Token: <token>`. All endpoints accept `POST` with a JSON body and return `{ ok: true, data: ... }` or `{ ok: false, error: "..." }`. Request bodies are validated with Zod.
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/mail/search` | Search Gmail (`{ query, account?, maxResults?, fetch? }`) |
+| `POST /api/mail/count` | Count Gmail results (`{ query, account? }`) |
+| `POST /api/mail/thread` | Get thread messages (`{ threadId, account? }`) |
+| `POST /api/mail/read` | Read a message (`{ messageId, account? }`) |
+| `POST /api/mail/send` | Send email (`{ to, subject, body, account?, cc?, bcc?, threadId? }`) |
+| `POST /api/mail/mark-read` | Mark as read (`{ messageId, account? }`) |
+| `POST /api/mail/archive` | Archive (`{ messageId, account? }`) |
+| `POST /api/mail/accounts` | List mail accounts (`{}`) |
+| `POST /api/slack/search` | Search Slack (`{ query, account?, maxResults? }`) |
+| `POST /api/slack/read` | Read a message (`{ channel, ts, account? }`) |
+| `POST /api/slack/send` | Post a message (`{ channel, text, account?, threadTs?, asUser? }`) |
+| `POST /api/slack/accounts` | List Slack workspaces (`{}`) |
+| `POST /api/ingest` | One-shot ingest (`{ accounts?, query?, maxResults?, markRead? }`) |
+| `GET /api/health` | Health check (returns `{ status: "ok", uptime }`) |
+
 ### Sinks
 
 Both `ingest` and `watch` support three output sinks:

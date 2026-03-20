@@ -8,7 +8,7 @@ import type { Argv } from "yargs"
 import { verboseLog } from "../../src/Verbose"
 import type { SlackTokenFile } from "./slackClient"
 
-type SlackAccountInfo = {
+export type SlackAccountInfo = {
   account: string
   team_id?: string
   team_name?: string
@@ -16,7 +16,7 @@ type SlackAccountInfo = {
   has_user_token: boolean
 }
 
-let listAccounts = (): { accounts: SlackAccountInfo[]; dirs: string[] } => {
+export let listSlackAccounts = (): { accounts: SlackAccountInfo[]; dirs: string[] } => {
   let seen = new Map<string, SlackAccountInfo>()
   let dirs = resolveAllTokenDirs("slack")
   for (let dir of dirs) {
@@ -66,7 +66,7 @@ export let parseAccountsCli = (args: string[], scriptName = "slack accounts") =>
   configureAccountsCli(yargs(args).scriptName(scriptName))
     .parseAsync()
     .then(argv => {
-      let { accounts, dirs } = listAccounts()
+      let { accounts, dirs } = listSlackAccounts()
       verboseLog(argv.verbose, "scanned token directories", dirs)
       verboseLog(argv.verbose, "slack accounts found", { count: accounts.length })
       if (argv.format === "text") {

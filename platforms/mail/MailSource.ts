@@ -7,7 +7,7 @@ import { toUnifiedMessage } from "./toUnifiedMessage"
 import { collectAttachments } from "./MessageExport"
 import { verboseLog } from "../../src/Verbose"
 
-let loadOAuth = (account: string, verbose = false) => {
+export let loadOAuth = (account: string, verbose = false) => {
   let credentialsPath = resolveCredentialsPath()
   let tokenPath = resolveTokenReadPathForAccount(account)
   verboseLog(verbose, "mail auth", { account, credentialsPath, tokenPath })
@@ -21,7 +21,7 @@ let loadOAuth = (account: string, verbose = false) => {
   return o
 }
 
-let gmailClient = (account: string, verbose = false) =>
+export let gmailClient = (account: string, verbose = false) =>
   google.gmail({ version: "v1", auth: loadOAuth(account, verbose) })
 
 export let mailSource: MessageSource = {

@@ -8,10 +8,11 @@ import { parseIngestCli, parseWatchCli } from "../src/ingest/cli"
 import { parseSlackCli } from "../platforms/slack"
 import { parseTeamsCli } from "../platforms/teams"
 import { parseWhatsAppCli } from "../platforms/whatsapp"
+import { parseServeCli } from "../src/serve/cli"
 import { verboseLog } from "../src/Verbose"
 
 let args = hideBin(process.argv)
-let subcommands = new Set(["mail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "help"])
+let subcommands = new Set(["mail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "help"])
 let verbose = args.includes("--verbose") || args.includes("-v")
 let commandIndex = args.findIndex(x => !x.startsWith("-"))
 let command = commandIndex >= 0 ? args[commandIndex] : undefined
@@ -32,6 +33,7 @@ let cli = yargs(args)
   .command("ingest", "One-shot: ingest new messages across accounts, emit to sink, then exit (cron-friendly)")
   .command("watch", "Daemon: continuously ingest new messages across accounts, emit to sink as they arrive")
   .command("corpus", "Build LLM-oriented corpus (messages.jsonl, chunks.jsonl, threads.jsonl) from ingested messages")
+  .command("serve", "HTTP API server: proxies all commands with token auth")
   .command("slack", "Slack: auth, search, read, send messages")
   .command("teams", "Teams: search, read, send messages (planned)")
   .command("whatsapp", "WhatsApp: read, send messages (planned)")
@@ -42,7 +44,7 @@ let cli = yargs(args)
       y
         .positional("platform", {
           type: "string",
-          choices: ["mail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus"] as const,
+          choices: ["mail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve"] as const,
           describe: "Platform or command to show help for",
         })
         .positional("command", {
@@ -59,6 +61,7 @@ let cli = yargs(args)
       if (argv.platform === "ingest") return parseIngestCli(helpArgs, "messagemon ingest")
       if (argv.platform === "watch") return parseWatchCli(helpArgs, "messagemon watch")
       if (argv.platform === "corpus") return parseCorpusCli(helpArgs, "messagemon corpus")
+      if (argv.platform === "serve") return parseServeCli(helpArgs, "messagemon serve")
       if (argv.platform === "slack") return parseSlackCli(helpArgs, "messagemon slack")
       if (argv.platform === "teams") return parseTeamsCli(helpArgs, "messagemon teams")
       if (argv.platform === "whatsapp") return parseWhatsAppCli(helpArgs, "messagemon whatsapp")
@@ -82,6 +85,7 @@ let cli = yargs(args)
       "  ingest    — One-shot multi-account ingest. Cron-friendly. Emits UnifiedMessage.",
       "  watch     — Continuous multi-account daemon. Emits UnifiedMessage as they arrive.",
       "  corpus    — Build LLM corpus from ingested message directories.",
+      "  serve     — HTTP API server with token auth (proxies all commands).",
       "",
       "Platforms:",
       "  slack     — Slack via @slack/web-api",
@@ -199,6 +203,17 @@ else if (!dispatched && command === "corpus") {
 }
 
 // ---------------------------------------------------------------------------
+// Serve — HTTP API server
+// ---------------------------------------------------------------------------
+
+else if (!dispatched && command === "serve") {
+  parseServeCli([...forwardedVerboseArgs, ...commandArgs], "messagemon serve").catch(e => {
+    console.error(e?.message ?? e)
+    process.exit(1)
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Slack platform
 // ---------------------------------------------------------------------------
 
@@ -249,6 +264,8 @@ else if (!dispatched && command === "help") {
     parseWatchCli([...forwardedVerboseArgs, "--help"], "messagemon watch")
   } else if (subhelp === "corpus") {
     parseCorpusCli([...forwardedVerboseArgs, "--help"], "messagemon corpus")
+  } else if (subhelp === "serve") {
+    parseServeCli([...forwardedVerboseArgs, "--help"], "messagemon serve")
   } else if (subhelp === "slack") {
     parseSlackCli([...forwardedVerboseArgs, "--help"], "messagemon slack")
   } else if (subhelp === "teams") {

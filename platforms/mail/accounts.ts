@@ -7,7 +7,7 @@ import { TOKEN_FILE_EXTENSION, resolveAllTokenDirs } from "../../src/CliConfig"
 import type { Argv } from "yargs"
 import { verboseLog } from "../../src/Verbose"
 
-let listAccounts = () => {
+export let listAccounts = () => {
   let all = new Set<string>()
   let dirs = resolveAllTokenDirs()
   for (let dir of dirs) {

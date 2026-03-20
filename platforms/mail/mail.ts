@@ -26,7 +26,7 @@ let loadOAuth = (account: string, verbose = false) => {
 
 let gmail = (account: string, verbose = false) => google.gmail({ version: "v1", auth: loadOAuth(account, verbose) })
 
-let base64url = (s: string) =>
+export let base64url = (s: string) =>
   Buffer.from(s, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
 
 let chunk76 = (s: string) => (s.match(/.{1,76}/g) ?? []).join("\r\n")
@@ -248,7 +248,7 @@ let iterateMessageRefs = async function* (params: {
   }
 }
 
-let buildRawMessage = (params: {
+export let buildRawMessage = (params: {
   from?: string
   to: string
   cc: string[]
