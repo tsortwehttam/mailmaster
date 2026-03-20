@@ -103,7 +103,7 @@ Outputs `messages.jsonl`, `chunks.jsonl`, `threads.jsonl`, and `summary.json`.
 
 ### `msgmon serve`
 
-HTTP API server that exposes all commands as JSON endpoints with token authentication.
+HTTP API server that exposes all commands as JSON endpoints with token authentication. Designed to run in an isolated environment so that an LLM agent can interact with messaging platforms via a simple bearer token without ever having direct access to OAuth credentials, API keys, or account tokens. The secrets stay on the server; the LLM only sees the HTTP interface.
 
 ```bash
 msgmon serve --token=mysecret
