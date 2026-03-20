@@ -93,7 +93,7 @@ msgmon watch --sink=exec --exec-cmd='./agent.sh' --mark-read
 
 ### `msgmon draft`
 
-Platform-agnostic draft management. Compose messages targeting any platform, review them, and send when ready. Drafts are stored locally as JSON files at `.msgmon/drafts/`.
+Platform-agnostic draft management. Compose messages targeting any platform, review them, and send when ready. Drafts created through the direct draft CLI are stored locally as JSON files at `.msgmon/drafts/`.
 
 ```bash
 # Compose a gmail draft (reply to a thread)
@@ -124,9 +124,30 @@ msgmon corpus --from=./inbox --out-dir=./corpus --chunk-chars=8000
 
 Outputs `messages.jsonl`, `chunks.jsonl`, `threads.jsonl`, and `summary.json`.
 
+### `msgmon workspace`
+
+Server-managed workspace lifecycle. Workspaces live under `.msgmon/workspaces/<id>` and are intended to be exported into isolated agent runtimes as plain files, without exposing local OAuth tokens or unrestricted send capability.
+
+```bash
+msgmon workspace init inbox-agent --account=default --query='is:unread'
+msgmon workspace refresh inbox-agent --max-results=100
+msgmon workspace show inbox-agent
+msgmon workspace list
+```
+
+Each workspace contains:
+
+- `workspace.json` — workspace metadata and ingest config
+- `instructions.md` — agent operating instructions
+- `user-profile.md` — user context and preferences
+- `status.md` — agent-maintained working summary
+- `inbox/` — ingested message directories
+- `drafts/` — draft JSON files that can later be sent through `serve`
+- `corpus/` — optional retrieval artifacts
+
 ### `msgmon serve`
 
-HTTP API server that exposes all commands as JSON endpoints with token authentication. Designed to run in an isolated environment so that an LLM agent can interact with messaging platforms via a simple bearer token without ever having direct access to OAuth credentials, API keys, or account tokens. The secrets stay on the server; the LLM only sees the HTTP interface.
+HTTP API server that exposes msgmon as a secret-holding control plane with token authentication. The intended model is: `serve` owns credentials, ingest, and outbound policy; the agent gets a workspace snapshot as files in an isolated runtime and uses the API only for privileged actions.
 
 ```bash
 msgmon serve --token=mysecret
@@ -163,9 +184,19 @@ Every request must include the header `X-Auth-Token: <token>`. All endpoints acc
 | `POST /api/draft/update` | Update draft fields (`{ id, ...fields }`) |
 | `POST /api/draft/send` | Send a draft (`{ id, keep? }`) |
 | `POST /api/draft/delete` | Delete a draft (`{ id }`) |
+| `POST /api/workspace/export` | Export agent-safe workspace snapshot (`{ workspaceId }`) |
+| `POST /api/workspace/refresh` | Ingest new messages into workspace inbox (`{ workspaceId, maxResults?, markRead?, saveAttachments?, seed? }`) |
+| `POST /api/workspace/push` | Push bounded file edits (`{ workspaceId, baseRevision, files[] }`) |
+| `POST /api/workspace/actions` | Apply privileged workspace actions (`{ workspaceId, actions[] }`) |
 | `GET /api/health` | Health check (returns `{ status: "ok", uptime }`) |
 
 **Attachments** (for `/api/gmail/send` and `/api/slack/send`): pass an `attachments` array in the JSON body. Each attachment is `{ filename, data, contentType? }` where `data` is base64-encoded file content. Slack file uploads require the `files:write` bot/user scope.
+
+**Workspace sync model:**
+- `/api/workspace/export` returns the current agent-safe workspace files plus a revision hash.
+- `/api/workspace/push` accepts bounded changes back for writable files such as `status.md`, `drafts/*.json`, and `corpus/**`.
+- `/api/workspace/actions` is the policy gate for privileged operations such as sending drafts, marking messages read, and archiving Gmail.
+- Hidden server files such as state and workspace-local credentials are not included in exports.
 
 ### Sinks
 
@@ -269,6 +300,20 @@ All output uses `UnifiedMessage` — a platform-agnostic envelope defined in `sr
 
 msgmon is designed as infrastructure for LLM agents that process messages. It handles auth, fetching, and sending — the agent decision-making lives outside this tool.
 
+### Trust model
+
+The secure operating model is:
+
+1. Run `msgmon serve` in the trusted environment that holds credentials.
+2. Create a workspace with `msgmon workspace init`.
+3. Refresh that workspace on the server with `msgmon workspace refresh` or `POST /api/workspace/refresh`.
+4. Export the workspace into an isolated agent runtime via `POST /api/workspace/export`.
+5. Let the agent read and edit the workspace files freely.
+6. Push allowed file changes back with `POST /api/workspace/push`.
+7. Route all privileged actions such as sending, mark-read, and archive through `POST /api/workspace/actions` or other `serve` endpoints.
+
+This keeps the agent file-native while keeping secrets and outbound policy on the server side.
+
 ### Cold start: seeding history
 
 On first run, `ingest` would emit every message matching the query as "new." For an agent, this is usually wrong — you want it to start processing from *now*, not re-process 30 days of history.
@@ -279,28 +324,31 @@ Use `--seed` to populate the state file without emitting anything:
 # Seed: absorb recent history silently
 msgmon ingest --seed --query='newer_than:30d' --max-results=500
 
-# Now run normally — only genuinely new messages come through
-msgmon watch --sink=exec --exec-cmd='./agent.sh' --mark-read
+# Now refresh a workspace normally — only genuinely new messages are written
+msgmon workspace refresh inbox-agent --mark-read
 ```
 
-The seed run records all matching message IDs in the state file. Subsequent runs skip those IDs and only emit messages that arrive after the seed.
+The seed run records all matching message IDs in the state file. Subsequent refresh runs skip those IDs and only write messages that arrive after the seed.
 
 ### Accessing thread context
 
-When an agent receives a new message (e.g., a reply), it often needs the prior conversation for context. If using `serve`, the agent can call `POST /api/gmail/thread` with the message's `threadId` to fetch the full thread history. This is available without any extra setup — the agent just needs the thread ID from the incoming `UnifiedMessage`.
+When an agent receives a new message, it often needs the prior conversation for context. If using `serve`, the agent can call `POST /api/gmail/thread` with the message's `threadId` to fetch full thread history without needing direct Gmail credentials.
 
 ### Typical serve setup
 
-Run `msgmon serve` in an isolated environment where OAuth credentials live. The agent interacts only via HTTP with a bearer token and never sees the underlying secrets:
+Run `msgmon serve` in the trusted environment where OAuth credentials live. The agent interacts only with exported workspace files plus the HTTP API and never sees the underlying secrets:
 
 ```bash
 # On the server (has credentials)
+msgmon workspace init inbox-agent --account=default --query='is:unread'
+msgmon workspace refresh inbox-agent
 msgmon serve --token=agent-secret --gmail-allow-to=allowed@example.com --send-rate-limit=5
 
-# The agent calls endpoints like:
-# POST /api/ingest        — poll for new messages
-# POST /api/gmail/thread  — fetch thread context
-# POST /api/gmail/send    — send a reply (subject to filtering + rate limits)
+# The agent workflow is:
+# POST /api/workspace/export   — fetch agent-safe workspace snapshot
+# edit files in an isolated runtime
+# POST /api/workspace/push     — push status/draft changes back
+# POST /api/workspace/actions  — ask the server to send or mutate remote state
 ```
 
 ## Adding a new platform
@@ -327,7 +375,7 @@ Every platform adapter must satisfy these constraints:
 npm test
 ```
 
-Runs unit tests for `toUnifiedMessage`, all three sinks, and the ingest core (state management, dedup, multi-account fan-out, markRead).
+Runs unit tests for `toUnifiedMessage`, the sinks, ingest state/dedup behavior, and the server-managed workspace sync model.
 
 ## Global flags
 

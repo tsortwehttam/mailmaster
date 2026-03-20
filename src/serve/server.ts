@@ -34,12 +34,12 @@ import {
   DraftListRequest,
   DraftSendRequest,
   DraftUpdateRequest,
-  AccountParam,
   type ApiResponse,
 } from "./schema"
 import { generateDraftId, saveDraft, loadDraft, listDrafts, deleteDraft } from "../draft/store"
 import { sendDraft } from "../draft/send"
 import type { Draft } from "../draft/schema"
+import { createWorkspaceHandlers } from "../workspace/api"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -680,6 +680,7 @@ let buildRoutes = (opts: ServeOptions): Record<string, Handler> => {
     "POST /api/draft/update": handleDraftUpdate,
     "POST /api/draft/send": guardedDraftSend,
     "POST /api/draft/delete": handleDraftDelete,
+    ...createWorkspaceHandlers(opts),
   }
 }
 
@@ -759,7 +760,7 @@ export let startServer = (opts: ServeOptions) =>
     server.on("error", reject)
     server.listen(opts.port, opts.host, () => {
       console.log(`[msgmon] server listening on http://${opts.host}:${opts.port}`)
-      console.log(`[msgmon] 19 routes registered`)
+      console.log(`[msgmon] 23 routes registered`)
       if (opts.gmailAllowTo.length) console.log(`[msgmon] gmail-allow-to: ${opts.gmailAllowTo.join(", ")}`)
       if (opts.slackAllowChannels.length) console.log(`[msgmon] slack-allow-channels: ${opts.slackAllowChannels.join(", ")}`)
       if (opts.sendRateLimit > 0) console.log(`[msgmon] send-rate-limit: ${opts.sendRateLimit}/min`)

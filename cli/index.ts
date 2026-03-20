@@ -35,9 +35,9 @@ let cli = yargs(args)
   .command("ingest", "One-shot: ingest new messages across accounts, emit to sink, then exit (cron-friendly)")
   .command("watch", "Daemon: continuously ingest new messages across accounts, emit to sink as they arrive")
   .command("corpus", "Build LLM-oriented corpus (messages.jsonl, chunks.jsonl, threads.jsonl) from ingested messages")
-  .command("serve", "HTTP API server: proxies all commands with token auth")
+  .command("serve", "HTTP API server: secret-holding control plane with policy-gated workspace sync")
   .command("draft", "Compose, list, send, edit, and delete message drafts")
-  .command("workspace", "Create and manage agent workspaces for message monitoring")
+  .command("workspace", "Create and refresh server-managed agent workspaces")
   .command("slack", "Slack: auth, search, read, send messages")
   .command("teams", "Teams: search, read, send messages (planned)")
   .command("whatsapp", "WhatsApp: read, send messages (planned)")
@@ -91,9 +91,9 @@ let cli = yargs(args)
       "  ingest    — One-shot multi-account ingest. Cron-friendly. Emits UnifiedMessage.",
       "  watch     — Continuous multi-account daemon. Emits UnifiedMessage as they arrive.",
       "  corpus    — Build LLM corpus from ingested message directories.",
-      "  serve     — HTTP API server with token auth (proxies all commands).",
+      "  serve     — Secret-holding HTTP control plane with policy-gated workspace sync.",
       "  draft     — Compose, list, send, edit, and delete message drafts.",
-      "  workspace — Create and manage agent workspaces for message monitoring.",
+      "  workspace — Create and refresh server-managed agent workspaces.",
       "",
       "Platforms:",
       "  slack     — Slack via @slack/web-api",

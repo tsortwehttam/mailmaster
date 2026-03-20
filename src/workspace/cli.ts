@@ -1,16 +1,7 @@
-import fs from "node:fs"
-import path from "node:path"
 import yargs from "yargs"
 import type { Argv } from "yargs"
-import { initWorkspace, loadWorkspaceConfig } from "./init"
-import { createWorkspaceHookSink } from "./hook"
-import { createDirSink, createChainSink } from "../ingest/sinks"
-import { watch } from "../ingest/ingest"
-import { prependConfigDir, LOCAL_CONFIG_DIRNAME } from "../CliConfig"
-import { gmailSource, markGmailRead, fetchGmailAttachment } from "../../platforms/gmail/MailSource"
-import { slackSource, markSlackRead } from "../../platforms/slack/SlackSource"
-import type { MessageSource } from "../ingest/ingest"
-import type { UnifiedMessage } from "../types"
+import { initWorkspace, loadWorkspaceConfig, listWorkspaceIds } from "./store"
+import { refreshWorkspace } from "./runtime"
 import { verboseLog } from "../Verbose"
 
 let normalizeMultiValue = (value: unknown) => {
@@ -22,52 +13,29 @@ let normalizeMultiValue = (value: unknown) => {
     .filter(Boolean)
 }
 
-let resolveSources = (accounts: string[]): Array<{ source: MessageSource; accounts: string[] }> => {
-  let gmailAccounts: string[] = []
-  let slackAccounts: string[] = []
-
-  for (let account of accounts) {
-    if (account.startsWith("slack:")) {
-      slackAccounts.push(account.slice("slack:".length))
-    } else {
-      gmailAccounts.push(account)
-    }
-  }
-
-  let sources: Array<{ source: MessageSource; accounts: string[] }> = []
-  if (gmailAccounts.length) sources.push({ source: gmailSource, accounts: gmailAccounts })
-  if (slackAccounts.length) sources.push({ source: slackSource, accounts: slackAccounts })
-  return sources
-}
-
-let resolveMarkRead = (msg: UnifiedMessage, account: string) => {
-  if (msg.platform === "slack") return markSlackRead(msg, account)
-  return markGmailRead(msg, account)
-}
-
 export let configureWorkspaceCli = (cli: Argv) =>
   cli
     .usage("Usage: $0 <command> [options]")
     .command(
-      "init <path>",
-      "Create a new workspace directory with default files",
+      "init <id>",
+      "Create a server-managed workspace under .msgmon/workspaces/<id>",
       y =>
         y
-          .positional("path", {
+          .positional("id", {
             type: "string",
             demandOption: true,
-            describe: "Directory to create the workspace in",
+            describe: "Workspace identifier",
           })
           .option("name", {
             type: "string",
-            describe: "Workspace name (defaults to directory name)",
+            describe: "Workspace display name (defaults to id)",
           })
           .option("account", {
             type: "array",
             string: true,
             default: ["default"],
             coerce: normalizeMultiValue,
-            describe: "Account(s) to configure (repeatable, comma-separated)",
+            describe: "Account(s) to ingest from (repeatable, comma-separated)",
           })
           .option("query", {
             type: "string",
@@ -75,7 +43,7 @@ export let configureWorkspaceCli = (cli: Argv) =>
             describe: "Default ingest query",
           }),
       async argv => {
-        let result = initWorkspace(argv.path!, {
+        let result = initWorkspace(argv.id!, {
           name: argv.name,
           accounts: argv.account,
           query: argv.query,
@@ -83,55 +51,41 @@ export let configureWorkspaceCli = (cli: Argv) =>
 
         console.log(JSON.stringify({
           created: true,
+          workspaceId: result.config.id,
           path: result.path,
           config: result.config,
-          files: [
-            "workspace.json",
-            "instructions.md",
-            "user-profile.md",
-            "status.md",
-            "on-message.sh",
-            "inbox/",
-            "drafts/",
-            "corpus/",
-          ],
         }, null, 2))
-
-        console.error(`\nWorkspace created at ${result.path}`)
-        console.error(`\nNext steps:`)
-        console.error(`  1. Edit ${path.join(result.path, "user-profile.md")} with your info`)
-        console.error(`  2. Edit ${path.join(result.path, "instructions.md")} to customize agent behavior`)
-        console.error(`  3. Edit ${path.join(result.path, "on-message.sh")} to wire up your agent`)
-        console.error(`  4. Seed historical messages:`)
-        console.error(`     msgmon ingest --seed --query='newer_than:30d' --sink=dir --out-dir=${path.join(result.path, "inbox")}`)
-        console.error(`  5. Start watching:`)
-        console.error(`     msgmon workspace watch ${result.path}`)
       },
     )
     .command(
-      "watch [path]",
-      "Watch for new messages using workspace config, save to inbox, and run on-message hook",
+      "refresh <id>",
+      "Ingest new messages into the server-owned workspace inbox",
       y =>
         y
-          .positional("path", {
+          .positional("id", {
             type: "string",
-            default: ".",
-            describe: "Workspace directory (default: current directory)",
+            demandOption: true,
+            describe: "Workspace identifier",
+          })
+          .option("max-results", {
+            type: "number",
+            default: 100,
+            describe: "Maximum messages per account per refresh",
           })
           .option("mark-read", {
             type: "boolean",
             default: false,
-            describe: "Mark messages as read after ingestion",
+            describe: "Mark messages as read after successful ingest",
           })
           .option("save-attachments", {
             type: "boolean",
             default: false,
             describe: "Download and save attachments",
           })
-          .option("no-hook", {
+          .option("seed", {
             type: "boolean",
             default: false,
-            describe: "Skip running the on-message hook (just ingest to inbox)",
+            describe: "Record IDs in state without writing inbox files",
           })
           .option("verbose", {
             alias: "v",
@@ -140,94 +94,52 @@ export let configureWorkspaceCli = (cli: Argv) =>
             describe: "Print diagnostic details to stderr",
           }),
       async argv => {
-        let wsDir = path.resolve(argv.path!)
-        let config = loadWorkspaceConfig(wsDir)
-        let inboxDir = path.join(wsDir, "inbox")
-        let accounts = config.accounts
-
-        // Prepend workspace .msgmon/ to token/credential resolution chain
-        // so tokens placed in <workspace>/.msgmon/ are found first,
-        // with fallback to cwd/.msgmon/ and ~/.msgmon/
-        prependConfigDir(path.join(wsDir, LOCAL_CONFIG_DIRNAME))
-
-        let dirSink = createDirSink({
-          outDir: inboxDir,
+        verboseLog(argv.verbose, "workspace refresh", {
+          workspaceId: argv.id,
+          maxResults: argv.maxResults,
+          markRead: argv.markRead,
           saveAttachments: argv.saveAttachments,
-          fetchAttachment: argv.saveAttachments
-            ? (msg, filename) => fetchGmailAttachment(msg, filename, accounts[0] ?? "default")
-            : undefined,
+          seed: argv.seed,
         })
 
-        let hookCommand = config.onMessage && !argv.noHook
-          ? path.resolve(wsDir, config.onMessage)
-          : null
-
-        let sink = hookCommand && fs.existsSync(hookCommand)
-          ? createChainSink([
-              dirSink,
-              createWorkspaceHookSink({
-                command: hookCommand,
-                workspaceDir: wsDir,
-                inboxDir,
-              }),
-            ])
-          : dirSink
-
-        if (hookCommand && !fs.existsSync(hookCommand)) {
-          console.error(`[workspace] Warning: onMessage hook "${hookCommand}" not found, skipping hook`)
-        }
-
-        // State file lives inside the workspace so it's self-contained
-        let stateDir = path.join(wsDir, LOCAL_CONFIG_DIRNAME, "state")
-        fs.mkdirSync(stateDir, { recursive: true })
-        let crypto = await import("node:crypto")
-        let key = JSON.stringify({ accounts: accounts.slice().sort(), query: config.query })
-        let digest = crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)
-        let statePath = path.join(stateDir, `ingest-${digest}.json`)
-
-        verboseLog(argv.verbose, "workspace watch", {
-          workspace: wsDir,
-          accounts,
-          query: config.query,
-          intervalMs: config.watchIntervalMs,
-          hook: hookCommand,
-        })
-
-        console.error(`[workspace] watching ${config.name} — accounts: ${accounts.join(", ")} — query: ${config.query}`)
-        console.error(`[workspace] inbox: ${inboxDir}`)
-        if (hookCommand && fs.existsSync(hookCommand)) {
-          console.error(`[workspace] on-message hook: ${hookCommand}`)
-        }
-
-        await watch({
-          sources: resolveSources(accounts),
-          query: config.query,
-          maxResults: 100,
-          sink,
-          statePath,
-          markRead: resolveMarkRead,
-          doMarkRead: argv.markRead,
-          seed: false,
+        let result = await refreshWorkspace({
+          workspaceId: argv.id!,
+          maxResults: argv.maxResults,
+          markRead: argv.markRead,
+          saveAttachments: argv.saveAttachments,
+          seed: argv.seed,
           verbose: argv.verbose,
-          intervalMs: config.watchIntervalMs,
         })
+
+        console.log(JSON.stringify({
+          workspaceId: argv.id,
+          ...result,
+        }, null, 2))
       },
     )
     .command(
-      "show [path]",
+      "show <id>",
       "Show workspace configuration",
       y =>
-        y.positional("path", {
+        y.positional("id", {
           type: "string",
-          default: ".",
-          describe: "Workspace directory (default: current directory)",
+          demandOption: true,
+          describe: "Workspace identifier",
         }),
       async argv => {
-        let config = loadWorkspaceConfig(argv.path!)
+        let config = loadWorkspaceConfig(argv.id!)
         console.log(JSON.stringify(config, null, 2))
       },
     )
-    .demandCommand(1, "Choose a command: init, watch, or show.")
+    .command(
+      "list",
+      "List workspace ids",
+      () => {},
+      async () => {
+        console.log(JSON.stringify({ workspaces: listWorkspaceIds() }, null, 2))
+      },
+    )
+    .demandCommand(1, "Choose a command: init, refresh, show, or list.")
     .strict()
     .help()
 

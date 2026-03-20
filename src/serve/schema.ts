@@ -113,6 +113,82 @@ export let IngestRequest = z.object({
 export type IngestRequest = z.infer<typeof IngestRequest>
 
 // ---------------------------------------------------------------------------
+// Workspace
+// ---------------------------------------------------------------------------
+
+export let WorkspaceIdParam = z.object({
+  workspaceId: z.string().min(1, "workspaceId is required"),
+})
+export type WorkspaceIdParam = z.infer<typeof WorkspaceIdParam>
+
+export let WorkspaceRefreshRequest = WorkspaceIdParam.extend({
+  maxResults: z.number().int().min(1).default(100),
+  markRead: z.boolean().default(false),
+  saveAttachments: z.boolean().default(false),
+  seed: z.boolean().default(false),
+})
+export type WorkspaceRefreshRequest = z.infer<typeof WorkspaceRefreshRequest>
+
+export let WorkspacePushFile = z.object({
+  path: z.string().min(1, "path is required"),
+  contentBase64: z.string().optional(),
+  deleted: z.boolean().default(false),
+}).refine(file => file.deleted || file.contentBase64 != null, {
+  message: "contentBase64 is required unless deleted is true",
+})
+export type WorkspacePushFile = z.infer<typeof WorkspacePushFile>
+
+export let WorkspacePushRequest = WorkspaceIdParam.extend({
+  baseRevision: z.string().min(1, "baseRevision is required"),
+  files: z.array(WorkspacePushFile).default([]),
+})
+export type WorkspacePushRequest = z.infer<typeof WorkspacePushRequest>
+
+export let WorkspaceActionDraftSend = z.object({
+  type: z.literal("draft.send"),
+  draftId: z.string().min(1, "draftId is required"),
+  keep: z.boolean().default(false),
+})
+
+export let WorkspaceActionDraftDelete = z.object({
+  type: z.literal("draft.delete"),
+  draftId: z.string().min(1, "draftId is required"),
+})
+
+export let WorkspaceActionGmailMarkRead = z.object({
+  type: z.literal("message.mark_read.gmail"),
+  account: z.string().default("default"),
+  messageId: z.string().min(1, "messageId is required"),
+})
+
+export let WorkspaceActionSlackMarkRead = z.object({
+  type: z.literal("message.mark_read.slack"),
+  account: z.string().default("default"),
+  channelId: z.string().min(1, "channelId is required"),
+  ts: z.string().min(1, "ts is required"),
+})
+
+export let WorkspaceActionMessageArchive = z.object({
+  type: z.literal("message.archive"),
+  account: z.string().default("default"),
+  messageId: z.string().min(1, "messageId is required"),
+})
+
+export let WorkspaceAction = z.discriminatedUnion("type", [
+  WorkspaceActionDraftSend,
+  WorkspaceActionDraftDelete,
+  WorkspaceActionGmailMarkRead,
+  WorkspaceActionSlackMarkRead,
+  WorkspaceActionMessageArchive,
+])
+export type WorkspaceAction = z.infer<typeof WorkspaceAction>
+
+export let WorkspaceActionRequest = WorkspaceIdParam.extend({
+  actions: z.array(WorkspaceAction).min(1),
+})
+export type WorkspaceActionRequest = z.infer<typeof WorkspaceActionRequest>
+
+// ---------------------------------------------------------------------------
 // Draft
 // ---------------------------------------------------------------------------
 
