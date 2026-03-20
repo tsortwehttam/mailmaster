@@ -17,7 +17,7 @@ let tmpDir: string
 
 let makeMsg = (id: string): UnifiedMessage => ({
   id,
-  platform: "mail",
+  platform: "gmail",
   timestamp: "2024-01-15T10:30:00.000Z",
   subject: `Subject ${id}`,
   bodyText: `Body ${id}`,
@@ -25,7 +25,7 @@ let makeMsg = (id: string): UnifiedMessage => ({
   to: [{ address: "recipient@example.com" }],
   threadId: `thread-${id}`,
   platformMetadata: {
-    platform: "mail",
+    platform: "gmail",
     messageId: id,
     threadId: `thread-${id}`,
   },
@@ -48,7 +48,7 @@ let makeCollectorSink = (): Sink & { collected: UnifiedMessage[] } => {
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "messagemon-ingest-test-"))
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msgmon-ingest-test-"))
 })
 
 afterEach(() => {

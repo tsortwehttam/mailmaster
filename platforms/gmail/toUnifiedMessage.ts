@@ -1,5 +1,5 @@
 import type { gmail_v1 } from "googleapis"
-import type { MailMetadata, Participant, UnifiedAttachment, UnifiedMessage } from "../../src/types"
+import type { GmailMetadata, Participant, UnifiedAttachment, UnifiedMessage } from "../../src/types"
 import { collectAttachments, decodeBase64Url, headerMap, pickBody } from "./MessageExport"
 
 let stripHtml = (html: string) =>
@@ -61,8 +61,8 @@ export let toUnifiedMessage = (msg: gmail_v1.Schema$Message): UnifiedMessage => 
       ? new Date(headers.date).toISOString()
       : new Date().toISOString()
 
-  let metadata: MailMetadata = {
-    platform: "mail",
+  let metadata: GmailMetadata = {
+    platform: "gmail",
     messageId: msg.id ?? "",
     threadId: msg.threadId ?? undefined,
     rfc822MessageId: headers["message-id"],
@@ -72,7 +72,7 @@ export let toUnifiedMessage = (msg: gmail_v1.Schema$Message): UnifiedMessage => 
 
   return {
     id: msg.id ?? "",
-    platform: "mail",
+    platform: "gmail",
     timestamp,
     subject: headers.subject,
     bodyText,

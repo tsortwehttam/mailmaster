@@ -78,7 +78,7 @@ export let createDirSink = (params: {
       if (msg.bodyHtml) fs.writeFileSync(path.resolve(msgDir, "body.html"), msg.bodyHtml)
 
       // headers.json (for mail, extract from platformMetadata)
-      if (msg.platformMetadata.platform === "mail" && msg.platformMetadata.headers) {
+      if (msg.platformMetadata.platform === "gmail" && msg.platformMetadata.headers) {
         fs.writeFileSync(
           path.resolve(msgDir, "headers.json"),
           JSON.stringify(msg.platformMetadata.headers, null, 2) + "\n",
@@ -113,17 +113,17 @@ export let createExecSink = (params: {
 }): Sink => ({
   async write(msg) {
     let env: Record<string, string> = {
-      MESSAGEMON_ID: msg.id,
-      MESSAGEMON_PLATFORM: msg.platform,
-      MESSAGEMON_TIMESTAMP: msg.timestamp,
-      MESSAGEMON_SUBJECT: msg.subject ?? "",
-      MESSAGEMON_FROM: msg.from?.address ?? "",
-      MESSAGEMON_THREAD_ID: msg.threadId ?? "",
-      MESSAGEMON_JSON: JSON.stringify(msg),
+      MSGMON_ID: msg.id,
+      MSGMON_PLATFORM: msg.platform,
+      MSGMON_TIMESTAMP: msg.timestamp,
+      MSGMON_SUBJECT: msg.subject ?? "",
+      MSGMON_FROM: msg.from?.address ?? "",
+      MSGMON_THREAD_ID: msg.threadId ?? "",
+      MSGMON_JSON: JSON.stringify(msg),
     }
-    if (msg.platformMetadata.platform === "mail") {
-      env.MESSAGEMON_MESSAGE_ID = msg.platformMetadata.messageId
-      env.MESSAGEMON_ACCOUNT = ""
+    if (msg.platformMetadata.platform === "gmail") {
+      env.MSGMON_MESSAGE_ID = msg.platformMetadata.messageId
+      env.MSGMON_ACCOUNT = ""
     }
     await new Promise<void>((resolve, reject) => {
       let child = spawn(params.command, {

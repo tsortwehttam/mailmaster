@@ -84,7 +84,7 @@ export let configureCorpusCli = (cli: Argv) =>
     .strict()
     .help()
 
-export let parseCorpusCli = (args: string[], scriptName = "messagemon corpus") =>
+export let parseCorpusCli = (args: string[], scriptName = "msgmon corpus") =>
   configureCorpusCli(yargs(args).scriptName(scriptName))
     .parseAsync()
     .then(argv => {

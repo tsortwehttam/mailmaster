@@ -10,7 +10,7 @@ let tmpDir: string
 
 let sampleMessage = (id = "msg-001"): UnifiedMessage => ({
   id,
-  platform: "mail",
+  platform: "gmail",
   timestamp: "2024-01-15T10:30:00.000Z",
   subject: "Test subject",
   bodyText: "Hello world",
@@ -20,7 +20,7 @@ let sampleMessage = (id = "msg-001"): UnifiedMessage => ({
   attachments: [{ filename: "report.pdf", mimeType: "application/pdf", sizeBytes: 1024 }],
   threadId: "thread-001",
   platformMetadata: {
-    platform: "mail",
+    platform: "gmail",
     messageId: id,
     threadId: "thread-001",
     labelIds: ["INBOX"],
@@ -29,7 +29,7 @@ let sampleMessage = (id = "msg-001"): UnifiedMessage => ({
 })
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "messagemon-test-"))
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msgmon-test-"))
 })
 
 afterEach(() => {
@@ -57,7 +57,7 @@ describe("createNdjsonSink", () => {
     await sink.write(sampleMessage())
 
     let parsed = JSON.parse(fs.readFileSync(filePath, "utf8").trim())
-    assert.equal(parsed.platform, "mail")
+    assert.equal(parsed.platform, "gmail")
     assert.equal(parsed.subject, "Test subject")
   })
 })
@@ -139,29 +139,29 @@ describe("createDirSink", () => {
 })
 
 describe("createExecSink", () => {
-  it("runs a command with MESSAGEMON_* env vars", async () => {
+  it("runs a command with MSGMON_* env vars", async () => {
     let outFile = path.join(tmpDir, "exec-out.txt")
     let sink = createExecSink({
-      command: `echo "$MESSAGEMON_ID $MESSAGEMON_PLATFORM $MESSAGEMON_SUBJECT" > ${outFile}`,
+      command: `echo "$MSGMON_ID $MSGMON_PLATFORM $MSGMON_SUBJECT" > ${outFile}`,
     })
 
     await sink.write(sampleMessage())
 
     let output = fs.readFileSync(outFile, "utf8").trim()
-    assert.equal(output, "msg-001 mail Test subject")
+    assert.equal(output, "msg-001 gmail Test subject")
   })
 
-  it("passes MESSAGEMON_JSON containing full message", async () => {
+  it("passes MSGMON_JSON containing full message", async () => {
     let outFile = path.join(tmpDir, "exec-json.txt")
     let sink = createExecSink({
-      command: `echo "$MESSAGEMON_JSON" > ${outFile}`,
+      command: `echo "$MSGMON_JSON" > ${outFile}`,
     })
 
     await sink.write(sampleMessage())
 
     let parsed = JSON.parse(fs.readFileSync(outFile, "utf8").trim())
     assert.equal(parsed.id, "msg-001")
-    assert.equal(parsed.platform, "mail")
+    assert.equal(parsed.platform, "gmail")
   })
 
   it("rejects when command fails", async () => {

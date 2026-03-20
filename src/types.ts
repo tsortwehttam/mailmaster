@@ -1,5 +1,5 @@
 /**
- * Unified message types for messagemon.
+ * Unified message types for msgmon.
  *
  * These types represent messages from any supported platform (email, Slack,
  * Teams, WhatsApp) in a single normalized shape that downstream consumers
@@ -11,14 +11,14 @@
 // Platform enum
 // ---------------------------------------------------------------------------
 
-export type Platform = "mail" | "slack" | "teams" | "whatsapp"
+export type Platform = "gmail" | "slack" | "teams" | "whatsapp"
 
 // ---------------------------------------------------------------------------
 // Platform-specific metadata carried alongside the unified envelope
 // ---------------------------------------------------------------------------
 
-export type MailMetadata = {
-  platform: "mail"
+export type GmailMetadata = {
+  platform: "gmail"
   /** Gmail message id */
   messageId: string
   /** Gmail thread id */
@@ -78,7 +78,7 @@ export type WhatsAppMetadata = {
 }
 
 export type PlatformMetadata =
-  | MailMetadata
+  | GmailMetadata
   | SlackMetadata
   | TeamsMetadata
   | WhatsAppMetadata

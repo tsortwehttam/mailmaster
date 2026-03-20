@@ -2,18 +2,18 @@
  * WhatsApp Business platform stub.
  *
  * Credentials layout (mirrors the mail pattern):
- *   .messagemon/whatsapp/credentials.json   — Meta app credentials (app_id, app_secret)
- *   .messagemon/whatsapp/tokens/<account>.json — Access tokens per business account / phone number
+ *   .msgmon/whatsapp/credentials.json   — Meta app credentials (app_id, app_secret)
+ *   .msgmon/whatsapp/tokens/<account>.json — Access tokens per business account / phone number
  *
  * Recommended off-the-shelf packages:
  *   whatsapp-web.js          — Unofficial WhatsApp Web client (personal accounts)
  *   whatsapp-api-js          — WhatsApp Cloud API wrapper (business accounts)
  *
  * Planned CLI subcommands (not yet implemented):
- *   messagemon whatsapp auth       — Store/verify WhatsApp Cloud API token
- *   messagemon whatsapp accounts   — List configured phone numbers / business accounts
- *   messagemon whatsapp read       — Read a message by id
- *   messagemon whatsapp send       — Send a message to a phone number
+ *   msgmon whatsapp auth       — Store/verify WhatsApp Cloud API token
+ *   msgmon whatsapp accounts   — List configured phone numbers / business accounts
+ *   msgmon whatsapp read       — Read a message by id
+ *   msgmon whatsapp send       — Send a message to a phone number
  */
 
 import yargs from "yargs"
@@ -25,7 +25,7 @@ export let configureWhatsAppCli = (cli: Argv) =>
     .option("account", {
       type: "string",
       default: "default",
-      describe: "WhatsApp business account name (uses .messagemon/whatsapp/tokens/<account>.json)",
+      describe: "WhatsApp business account name (uses .msgmon/whatsapp/tokens/<account>.json)",
     })
     .option("verbose", {
       alias: "v",

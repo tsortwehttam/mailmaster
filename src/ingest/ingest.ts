@@ -32,7 +32,7 @@ export let writeIngestState = (statePath: string, state: IngestState) => {
 export let buildDefaultStatePath = (params: { accounts: string[]; query: string }) => {
   let key = JSON.stringify({ accounts: params.accounts.sort(), query: params.query })
   let digest = crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)
-  return path.resolve(process.cwd(), ".messagemon", "state", `ingest-${digest}.json`)
+  return path.resolve(process.cwd(), ".msgmon", "state", `ingest-${digest}.json`)
 }
 
 // ---------------------------------------------------------------------------

@@ -2,8 +2,8 @@
  * Microsoft Teams platform stub.
  *
  * Credentials layout (mirrors the mail pattern):
- *   .messagemon/teams/credentials.json   — Azure AD app registration (client_id, client_secret, tenant_id)
- *   .messagemon/teams/tokens/<account>.json — OAuth tokens per tenant/user
+ *   .msgmon/teams/credentials.json   — Azure AD app registration (client_id, client_secret, tenant_id)
+ *   .msgmon/teams/tokens/<account>.json — OAuth tokens per tenant/user
  *
  * Recommended off-the-shelf packages:
  *   @microsoft/microsoft-graph-client  — Microsoft Graph API client
@@ -11,11 +11,11 @@
  *   @azure/msal-node                   — MSAL for Node.js (interactive + daemon flows)
  *
  * Planned CLI subcommands (not yet implemented):
- *   messagemon teams auth       — Run Azure AD OAuth / device-code flow
- *   messagemon teams accounts   — List configured Teams tenants
- *   messagemon teams search     — Search Teams messages via Graph API
- *   messagemon teams read       — Read a message by team/channel/message id
- *   messagemon teams send       — Post a message to a Teams channel
+ *   msgmon teams auth       — Run Azure AD OAuth / device-code flow
+ *   msgmon teams accounts   — List configured Teams tenants
+ *   msgmon teams search     — Search Teams messages via Graph API
+ *   msgmon teams read       — Read a message by team/channel/message id
+ *   msgmon teams send       — Post a message to a Teams channel
  */
 
 import yargs from "yargs"
@@ -27,7 +27,7 @@ export let configureTeamsCli = (cli: Argv) =>
     .option("account", {
       type: "string",
       default: "default",
-      describe: "Teams tenant account name (uses .messagemon/teams/tokens/<account>.json)",
+      describe: "Teams tenant account name (uses .msgmon/teams/tokens/<account>.json)",
     })
     .option("verbose", {
       alias: "v",

@@ -29,12 +29,12 @@ export let configureServeCli = (cli: Argv) =>
       demandOption: true,
       describe: "Secret token for X-Auth-Token authentication (required)",
     })
-    .option("mail-allow-to", {
+    .option("gmail-allow-to", {
       type: "array",
       string: true,
       default: [],
       coerce: normalizeMultiValue,
-      describe: "Allowed mail recipients; sends to others are silently stripped",
+      describe: "Allowed Gmail recipients; sends to others are silently stripped",
     })
     .option("slack-allow-channels", {
       type: "array",
@@ -60,7 +60,7 @@ export let configureServeCli = (cli: Argv) =>
       describe: "Print diagnostic details to stderr",
     })
     .example("$0 --token=mysecret", "Start server on default port with auth token")
-    .example("$0 --token=mysecret --mail-allow-to=a@x.com,b@x.com", "Only allow sends to a@x.com and b@x.com")
+    .example("$0 --token=mysecret --gmail-allow-to=a@x.com,b@x.com", "Only allow sends to a@x.com and b@x.com")
     .example("$0 --token=mysecret --slack-allow-channels=general,alerts", "Only allow Slack posts to #general and #alerts")
     .example("$0 --token=mysecret --send-rate-limit=10", "Cap all sends at 10 per minute")
     .epilog(
@@ -70,7 +70,7 @@ export let configureServeCli = (cli: Argv) =>
         "  Requests without a valid token receive 401 Unauthorized.",
         "",
         "Send filtering:",
-        "  --mail-allow-to restricts outbound email recipients. Disallowed addresses",
+        "  --gmail-allow-to restricts outbound email recipients. Disallowed addresses",
         "  are silently stripped from to/cc/bcc. If no allowed recipients remain, the",
         "  request returns 400. Omit to allow all recipients.",
         "",
@@ -78,19 +78,19 @@ export let configureServeCli = (cli: Argv) =>
         "  Sends to disallowed channels return 400. Omit to allow all channels.",
         "",
         "Rate limiting:",
-        "  --send-rate-limit sets a global per-minute cap on sends (mail + Slack",
+        "  --send-rate-limit sets a global per-minute cap on sends (Gmail + Slack",
         "  combined). Excess requests return 429 with a Retry-After hint. Set to 0",
         "  (default) to disable rate limiting.",
         "",
         "Endpoints (all POST, JSON body):",
-        "  /api/mail/search      — Search Gmail messages",
-        "  /api/mail/count       — Count Gmail results",
-        "  /api/mail/thread      — Get all messages in a thread",
-        "  /api/mail/read        — Read a single message",
-        "  /api/mail/send        — Send an email (subject to filtering/rate limit)",
-        "  /api/mail/mark-read   — Mark a message as read",
-        "  /api/mail/archive     — Archive a message",
-        "  /api/mail/accounts    — List configured mail accounts",
+        "  /api/gmail/search      — Search Gmail messages",
+        "  /api/gmail/count       — Count Gmail results",
+        "  /api/gmail/thread      — Get all messages in a thread",
+        "  /api/gmail/read        — Read a single message",
+        "  /api/gmail/send        — Send an email (subject to filtering/rate limit)",
+        "  /api/gmail/mark-read   — Mark a message as read",
+        "  /api/gmail/archive     — Archive a message",
+        "  /api/gmail/accounts    — List configured Gmail accounts",
         "  /api/slack/search     — Search Slack messages",
         "  /api/slack/read       — Read a Slack message",
         "  /api/slack/send       — Post a Slack message (subject to filtering/rate limit)",
@@ -105,14 +105,14 @@ export let configureServeCli = (cli: Argv) =>
     .strict()
     .help()
 
-export let parseServeCli = async (args: string[], scriptName = "messagemon serve") => {
+export let parseServeCli = async (args: string[], scriptName = "msgmon serve") => {
   let argv = await configureServeCli(yargs(args).scriptName(scriptName)).parseAsync()
   await startServer({
     port: argv.port,
     host: argv.host,
     token: argv.token,
     verbose: argv.verbose,
-    mailAllowTo: argv.mailAllowTo,
+    gmailAllowTo: argv.gmailAllowTo,
     slackAllowChannels: argv.slackAllowChannels,
     sendRateLimit: argv.sendRateLimit,
   })

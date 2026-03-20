@@ -7,10 +7,10 @@ import type { Platform } from "./types"
 export let DEFAULT_ACCOUNT = "default"
 
 export let APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-export let LOCAL_CONFIG_DIRNAME = ".messagemon"
+export let LOCAL_CONFIG_DIRNAME = ".msgmon"
 export let PWD_CONFIG_DIR = path.resolve(process.cwd(), LOCAL_CONFIG_DIRNAME)
 export let APP_CONFIG_DIR = path.resolve(APP_DIR, LOCAL_CONFIG_DIRNAME)
-export let GLOBAL_CONFIG_DIR = path.resolve(os.homedir(), ".messagemon")
+export let GLOBAL_CONFIG_DIR = path.resolve(os.homedir(), ".msgmon")
 export let TOKEN_FILE_EXTENSION = ".json"
 
 // ---------------------------------------------------------------------------
@@ -22,16 +22,16 @@ let dedupe = (paths: string[]) => Array.from(new Set(paths.map(x => path.resolve
 /** Returns the three-tier config directories (pwd, app-install, home) */
 export let resolveConfigDirs = () => dedupe([PWD_CONFIG_DIR, APP_CONFIG_DIR, GLOBAL_CONFIG_DIR])
 
-/** Platform-specific credentials file (e.g. .messagemon/mail/credentials.json) */
+/** Platform-specific credentials file (e.g. .msgmon/gmail/credentials.json) */
 let platformCredentialsPaths = (platform: Platform) =>
   resolveConfigDirs().map(dir => path.resolve(dir, platform, "credentials.json"))
 
-/** Platform-specific token directory (e.g. .messagemon/mail/tokens/) */
+/** Platform-specific token directory (e.g. .msgmon/gmail/tokens/) */
 let platformTokenDirs = (platform: Platform) =>
   resolveConfigDirs().map(dir => path.resolve(dir, platform, "tokens"))
 
 // ---------------------------------------------------------------------------
-// Flat-layout paths (.messagemon/credentials.json, .messagemon/tokens/)
+// Flat-layout paths (.msgmon/credentials.json, .msgmon/tokens/)
 // Used when no platform arg is passed — the default for all current callers.
 // ---------------------------------------------------------------------------
 

@@ -8,38 +8,44 @@ export let AccountParam = z.object({
   account: z.string().default("default"),
 })
 
+export let Attachment = z.object({
+  filename: z.string().min(1, "filename is required"),
+  contentType: z.string().default("application/octet-stream"),
+  data: z.string().min(1, "base64 data is required"),
+})
+
 // ---------------------------------------------------------------------------
-// Mail
+// Gmail
 // ---------------------------------------------------------------------------
 
-export let MailSearchRequest = z.object({
+export let GmailSearchRequest = z.object({
   account: z.string().default("default"),
   query: z.string().min(1, "query is required"),
   maxResults: z.number().int().min(1).max(500).default(20),
   fetch: z.enum(["none", "metadata", "full", "summary"]).default("none"),
   previewChars: z.number().int().min(1).default(200),
 })
-export type MailSearchRequest = z.infer<typeof MailSearchRequest>
+export type GmailSearchRequest = z.infer<typeof GmailSearchRequest>
 
-export let MailCountRequest = z.object({
+export let GmailCountRequest = z.object({
   account: z.string().default("default"),
   query: z.string().min(1, "query is required"),
 })
-export type MailCountRequest = z.infer<typeof MailCountRequest>
+export type GmailCountRequest = z.infer<typeof GmailCountRequest>
 
-export let MailThreadRequest = z.object({
+export let GmailThreadRequest = z.object({
   account: z.string().default("default"),
   threadId: z.string().min(1, "threadId is required"),
 })
-export type MailThreadRequest = z.infer<typeof MailThreadRequest>
+export type GmailThreadRequest = z.infer<typeof GmailThreadRequest>
 
-export let MailReadRequest = z.object({
+export let GmailReadRequest = z.object({
   account: z.string().default("default"),
   messageId: z.string().min(1, "messageId is required"),
 })
-export type MailReadRequest = z.infer<typeof MailReadRequest>
+export type GmailReadRequest = z.infer<typeof GmailReadRequest>
 
-export let MailSendRequest = z.object({
+export let GmailSendRequest = z.object({
   account: z.string().default("default"),
   to: z.string().min(1, "to is required"),
   cc: z.array(z.string()).default([]),
@@ -52,14 +58,15 @@ export let MailSendRequest = z.object({
   inReplyTo: z.string().optional(),
   references: z.string().optional(),
   messageId: z.string().optional(),
+  attachments: z.array(Attachment).default([]),
 })
-export type MailSendRequest = z.infer<typeof MailSendRequest>
+export type GmailSendRequest = z.infer<typeof GmailSendRequest>
 
-export let MailModifyRequest = z.object({
+export let GmailModifyRequest = z.object({
   account: z.string().default("default"),
   messageId: z.string().min(1, "messageId is required"),
 })
-export type MailModifyRequest = z.infer<typeof MailModifyRequest>
+export type GmailModifyRequest = z.infer<typeof GmailModifyRequest>
 
 // ---------------------------------------------------------------------------
 // Slack
@@ -82,11 +89,14 @@ export type SlackReadRequest = z.infer<typeof SlackReadRequest>
 export let SlackSendRequest = z.object({
   account: z.string().default("default"),
   channel: z.string().min(1, "channel is required"),
-  text: z.string().min(1, "text is required"),
+  text: z.string().default(""),
   threadTs: z.string().optional(),
   asUser: z.boolean().default(true),
+  attachments: z.array(Attachment).default([]),
+}).refine(d => d.text.length > 0 || d.attachments.length > 0, {
+  message: "at least one of text or attachments is required",
 })
-export type SlackSendRequest = z.infer<typeof SlackSendRequest>
+export type SlackSendRequest = z.input<typeof SlackSendRequest>
 
 // ---------------------------------------------------------------------------
 // Ingest

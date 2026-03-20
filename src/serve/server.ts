@@ -2,29 +2,29 @@ import http from "node:http"
 import path from "node:path"
 import { z } from "zod"
 import { google } from "googleapis"
-import { gmailClient } from "../../platforms/mail/MailSource"
-import { toUnifiedMessage } from "../../platforms/mail/toUnifiedMessage"
-import { headerMap, pickBody } from "../../platforms/mail/MessageExport"
-import { base64url, buildRawMessage } from "../../platforms/mail/mail"
-import { listAccounts as listMailAccounts } from "../../platforms/mail/accounts"
-import { slackClients } from "../../platforms/slack/slackClient"
+import { gmailClient } from "../../platforms/gmail/MailSource"
+import { toUnifiedMessage } from "../../platforms/gmail/toUnifiedMessage"
+import { headerMap, pickBody } from "../../platforms/gmail/MessageExport"
+import { base64url, buildRawMessage } from "../../platforms/gmail/mail"
+import { listAccounts as listGmailAccounts } from "../../platforms/gmail/accounts"
+import { slackClients, uploadFilesToChannel } from "../../platforms/slack/slackClient"
 import { toUnifiedMessage as slackToUnifiedMessage } from "../../platforms/slack/toUnifiedMessage"
 import type { SlackMessage, UserCache } from "../../platforms/slack/toUnifiedMessage"
 import { listSlackAccounts } from "../../platforms/slack/accounts"
 import { ingestOnce, buildDefaultStatePath } from "../ingest/ingest"
 import { createNdjsonSink } from "../ingest/sinks"
-import { mailSource, markMailRead } from "../../platforms/mail/MailSource"
+import { gmailSource, markGmailRead } from "../../platforms/gmail/MailSource"
 import { slackSource, markSlackRead } from "../../platforms/slack/SlackSource"
 import { verboseLog } from "../Verbose"
 import type { MessageSource } from "../ingest/ingest"
 import type { UnifiedMessage } from "../types"
 import {
-  MailSearchRequest,
-  MailCountRequest,
-  MailThreadRequest,
-  MailReadRequest,
-  MailSendRequest,
-  MailModifyRequest,
+  GmailSearchRequest,
+  GmailCountRequest,
+  GmailThreadRequest,
+  GmailReadRequest,
+  GmailSendRequest,
+  GmailModifyRequest,
   SlackSearchRequest,
   SlackReadRequest,
   SlackSendRequest,
@@ -78,7 +78,7 @@ let validate = <T>(schema: z.ZodType<T>, data: unknown): { success: true; data: 
 }
 
 // ---------------------------------------------------------------------------
-// Mail strip-html (duplicated from mail.ts to avoid coupling to CLI module)
+// Gmail strip-html (duplicated from mail.ts to avoid coupling to CLI module)
 // ---------------------------------------------------------------------------
 
 let stripHtml = (html: string) =>
@@ -100,11 +100,11 @@ let stripHtml = (html: string) =>
     .trim()
 
 // ---------------------------------------------------------------------------
-// Mail handlers
+// Gmail handlers
 // ---------------------------------------------------------------------------
 
-let handleMailSearch = async (body: unknown) => {
-  let v = validate(MailSearchRequest, body)
+let handleGmailSearch = async (body: unknown) => {
+  let v = validate(GmailSearchRequest, body)
   if (!v.success) return { status: 400, error: v.error }
   let p = v.data
 
@@ -160,8 +160,8 @@ let handleMailSearch = async (body: unknown) => {
   }
 }
 
-let handleMailCount = async (body: unknown) => {
-  let v = validate(MailCountRequest, body)
+let handleGmailCount = async (body: unknown) => {
+  let v = validate(GmailCountRequest, body)
   if (!v.success) return { status: 400, error: v.error }
   let p = v.data
 
@@ -177,8 +177,8 @@ let handleMailCount = async (body: unknown) => {
   }
 }
 
-let handleMailThread = async (body: unknown) => {
-  let v = validate(MailThreadRequest, body)
+let handleGmailThread = async (body: unknown) => {
+  let v = validate(GmailThreadRequest, body)
   if (!v.success) return { status: 400, error: v.error }
   let p = v.data
 
@@ -191,8 +191,8 @@ let handleMailThread = async (body: unknown) => {
   }
 }
 
-let handleMailRead = async (body: unknown) => {
-  let v = validate(MailReadRequest, body)
+let handleGmailRead = async (body: unknown) => {
+  let v = validate(GmailReadRequest, body)
   if (!v.success) return { status: 400, error: v.error }
   let p = v.data
 
@@ -201,8 +201,8 @@ let handleMailRead = async (body: unknown) => {
   return { status: 200, data: toUnifiedMessage(r.data) }
 }
 
-let handleMailMarkRead = async (body: unknown) => {
-  let v = validate(MailModifyRequest, body)
+let handleGmailMarkRead = async (body: unknown) => {
+  let v = validate(GmailModifyRequest, body)
   if (!v.success) return { status: 400, error: v.error }
   let p = v.data
 
@@ -215,8 +215,8 @@ let handleMailMarkRead = async (body: unknown) => {
   return { status: 200, data: r.data }
 }
 
-let handleMailArchive = async (body: unknown) => {
-  let v = validate(MailModifyRequest, body)
+let handleGmailArchive = async (body: unknown) => {
+  let v = validate(GmailModifyRequest, body)
   if (!v.success) return { status: 400, error: v.error }
   let p = v.data
 
@@ -229,8 +229,8 @@ let handleMailArchive = async (body: unknown) => {
   return { status: 200, data: r.data }
 }
 
-let handleMailAccounts = async (body: unknown) => {
-  let { accounts } = listMailAccounts()
+let handleGmailAccounts = async (body: unknown) => {
+  let { accounts } = listGmailAccounts()
   return { status: 200, data: { accounts } }
 }
 
@@ -245,7 +245,7 @@ let handleSlackSearch = async (body: unknown) => {
 
   let clients = slackClients(p.account)
   if (!clients.user) {
-    return { status: 400, error: "search requires a user token (xoxp-). Run: messagemon slack auth --mode=oauth" }
+    return { status: 400, error: "search requires a user token (xoxp-). Run: msgmon slack auth --mode=oauth" }
   }
   let r = await clients.user.search.messages({
     query: p.query,
@@ -324,20 +324,20 @@ let handleIngest = async (body: unknown) => {
     : buildDefaultStatePath({ accounts: p.accounts, query: p.query })
 
   // Dispatch accounts by platform prefix
-  let mailAccounts: string[] = []
+  let gmailAccounts: string[] = []
   let slackAccounts: string[] = []
   for (let account of p.accounts) {
     if (account.startsWith("slack:")) slackAccounts.push(account.slice("slack:".length))
-    else mailAccounts.push(account)
+    else gmailAccounts.push(account)
   }
 
   let sources: Array<{ source: MessageSource; accounts: string[] }> = []
-  if (mailAccounts.length) sources.push({ source: mailSource, accounts: mailAccounts })
+  if (gmailAccounts.length) sources.push({ source: gmailSource, accounts: gmailAccounts })
   if (slackAccounts.length) sources.push({ source: slackSource, accounts: slackAccounts })
 
   let resolveMarkRead = (msg: UnifiedMessage, account: string) => {
     if (msg.platform === "slack") return markSlackRead(msg, account)
-    return markMailRead(msg, account)
+    return markGmailRead(msg, account)
   }
 
   // Collect messages into an array instead of writing to stdout
@@ -369,7 +369,7 @@ let handleIngest = async (body: unknown) => {
 // Send filtering
 // ---------------------------------------------------------------------------
 
-let filterMailRecipients = (addresses: string[], allowList: string[]): string[] => {
+let filterGmailRecipients = (addresses: string[], allowList: string[]): string[] => {
   if (allowList.length === 0) return addresses
   let allowed = new Set(allowList.map(a => a.toLowerCase()))
   return addresses.filter(addr => {
@@ -421,8 +421,8 @@ type Handler = (body: unknown) => Promise<{ status: number; data?: unknown; erro
 let buildRoutes = (opts: ServeOptions): Record<string, Handler> => {
   let rateLimiter = createRateLimiter(opts.sendRateLimit)
 
-  let guardedMailSend: Handler = async (body) => {
-    let v = validate(MailSendRequest, body)
+  let guardedGmailSend: Handler = async (body) => {
+    let v = validate(GmailSendRequest, body)
     if (!v.success) return { status: 400, error: v.error }
     let p = v.data
 
@@ -433,12 +433,12 @@ let buildRoutes = (opts: ServeOptions): Record<string, Handler> => {
     }
 
     // Filter recipients
-    let to = filterMailRecipients([p.to], opts.mailAllowTo)
-    let cc = filterMailRecipients(p.cc, opts.mailAllowTo)
-    let bcc = filterMailRecipients(p.bcc, opts.mailAllowTo)
+    let to = filterGmailRecipients([p.to], opts.gmailAllowTo)
+    let cc = filterGmailRecipients(p.cc, opts.gmailAllowTo)
+    let bcc = filterGmailRecipients(p.bcc, opts.gmailAllowTo)
 
     if (to.length === 0 && cc.length === 0 && bcc.length === 0) {
-      return { status: 400, error: "No allowed recipients remain after filtering. Check --mail-allow-to." }
+      return { status: 400, error: "No allowed recipients remain after filtering. Check --gmail-allow-to." }
     }
 
     let raw = buildRawMessage({
@@ -452,7 +452,7 @@ let buildRoutes = (opts: ServeOptions): Record<string, Handler> => {
       messageId: p.messageId,
       subject: p.subject,
       body: p.body,
-      attach: [],
+      attach: p.attachments,
     })
 
     let client = gmailClient(p.account)
@@ -496,23 +496,51 @@ let buildRoutes = (opts: ServeOptions): Record<string, Handler> => {
       channelId = match.id
     }
 
-    let r = await sendClient.chat.postMessage({
-      channel: channelId,
-      text: p.text,
-      thread_ts: p.threadTs,
-    })
-    return { status: 200, data: { ok: r.ok, ts: r.ts, channel: r.channel } }
+    // Send text message if present
+    let messageResult: { ok?: boolean; ts?: string; channel?: string } | null = null
+    if (p.text) {
+      let r = await sendClient.chat.postMessage({
+        channel: channelId,
+        text: p.text,
+        thread_ts: p.threadTs,
+      })
+      messageResult = { ok: r.ok, ts: r.ts, channel: r.channel }
+    }
+
+    // Upload attachments if present
+    let filesUploaded = 0
+    if (p.attachments.length > 0) {
+      let files = p.attachments.map(a => ({
+        filename: a.filename,
+        data: Buffer.from(a.data, "base64"),
+      }))
+      await uploadFilesToChannel(sendClient, channelId, files, {
+        threadTs: p.threadTs ?? messageResult?.ts,
+        initialComment: messageResult ? undefined : p.text,
+      })
+      filesUploaded = files.length
+    }
+
+    return {
+      status: 200,
+      data: {
+        ok: messageResult?.ok ?? true,
+        ts: messageResult?.ts,
+        channel: messageResult?.channel ?? channelId,
+        filesUploaded,
+      },
+    }
   }
 
   return {
-    "POST /api/mail/search": handleMailSearch,
-    "POST /api/mail/count": handleMailCount,
-    "POST /api/mail/thread": handleMailThread,
-    "POST /api/mail/read": handleMailRead,
-    "POST /api/mail/send": guardedMailSend,
-    "POST /api/mail/mark-read": handleMailMarkRead,
-    "POST /api/mail/archive": handleMailArchive,
-    "POST /api/mail/accounts": handleMailAccounts,
+    "POST /api/gmail/search": handleGmailSearch,
+    "POST /api/gmail/count": handleGmailCount,
+    "POST /api/gmail/thread": handleGmailThread,
+    "POST /api/gmail/read": handleGmailRead,
+    "POST /api/gmail/send": guardedGmailSend,
+    "POST /api/gmail/mark-read": handleGmailMarkRead,
+    "POST /api/gmail/archive": handleGmailArchive,
+    "POST /api/gmail/accounts": handleGmailAccounts,
     "POST /api/slack/search": handleSlackSearch,
     "POST /api/slack/read": handleSlackRead,
     "POST /api/slack/send": guardedSlackSend,
@@ -530,7 +558,7 @@ export type ServeOptions = {
   token: string
   host: string
   verbose: boolean
-  mailAllowTo: string[]
+  gmailAllowTo: string[]
   slackAllowChannels: string[]
   sendRateLimit: number
 }
@@ -596,11 +624,11 @@ export let startServer = (opts: ServeOptions) =>
     let server = createServer(opts)
     server.on("error", reject)
     server.listen(opts.port, opts.host, () => {
-      console.log(`[messagemon] server listening on http://${opts.host}:${opts.port}`)
-      console.log(`[messagemon] 13 routes registered`)
-      if (opts.mailAllowTo.length) console.log(`[messagemon] mail-allow-to: ${opts.mailAllowTo.join(", ")}`)
-      if (opts.slackAllowChannels.length) console.log(`[messagemon] slack-allow-channels: ${opts.slackAllowChannels.join(", ")}`)
-      if (opts.sendRateLimit > 0) console.log(`[messagemon] send-rate-limit: ${opts.sendRateLimit}/min`)
+      console.log(`[msgmon] server listening on http://${opts.host}:${opts.port}`)
+      console.log(`[msgmon] 13 routes registered`)
+      if (opts.gmailAllowTo.length) console.log(`[msgmon] gmail-allow-to: ${opts.gmailAllowTo.join(", ")}`)
+      if (opts.slackAllowChannels.length) console.log(`[msgmon] slack-allow-channels: ${opts.slackAllowChannels.join(", ")}`)
+      if (opts.sendRateLimit > 0) console.log(`[msgmon] send-rate-limit: ${opts.sendRateLimit}/min`)
       resolve(server)
     })
   })

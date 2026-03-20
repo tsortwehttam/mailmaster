@@ -32,7 +32,7 @@ export let configureAuthCli = (cli: Argv) =>
     .option("account", {
       type: "string",
       default: DEFAULT_ACCOUNT,
-      describe: "Token account name (writes .messagemon/mail/tokens/<account>.json)",
+      describe: "Token account name (writes .msgmon/gmail/tokens/<account>.json)",
     })
     .option("verbose", {
       alias: "v",
@@ -40,14 +40,14 @@ export let configureAuthCli = (cli: Argv) =>
       default: false,
       describe: "Print diagnostic details to stderr",
     })
-    .example("$0 --account=personal", "Run OAuth and save token to .messagemon/mail/tokens/personal.json")
+    .example("$0 --account=personal", "Run OAuth and save token to .msgmon/gmail/tokens/personal.json")
     .epilog(
       [
         "Output:",
         "- Prints `Saved <absolute token path>` on success.",
-        "- The token file is used by `mail` commands via the same `--account` value.",
-        "- Reads credentials from `./.messagemon/mail/credentials.json`, then `<install-dir>/.messagemon/mail/credentials.json`, then `~/.messagemon/mail/credentials.json` (also checks legacy `.messagemon/credentials.json`).",
-        "- Writes token to `./.messagemon/mail/tokens/` in the current working directory.",
+        "- The token file is used by `gmail` commands via the same `--account` value.",
+        "- Reads credentials from `./.msgmon/gmail/credentials.json`, then `<install-dir>/.msgmon/gmail/credentials.json`, then `~/.msgmon/gmail/credentials.json` (also checks legacy `.msgmon/credentials.json`).",
+        "- Writes token to `./.msgmon/gmail/tokens/` in the current working directory.",
       ].join("\n"),
     )
     .strict()

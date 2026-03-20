@@ -1,6 +1,6 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { toUnifiedMessage } from "../platforms/mail/toUnifiedMessage"
+import { toUnifiedMessage } from "../platforms/gmail/toUnifiedMessage"
 import type { gmail_v1 } from "googleapis"
 
 let makeMessage = (overrides: Partial<gmail_v1.Schema$Message> = {}): gmail_v1.Schema$Message => ({
@@ -31,7 +31,7 @@ describe("toUnifiedMessage", () => {
     let unified = toUnifiedMessage(msg)
 
     assert.equal(unified.id, "msg-001")
-    assert.equal(unified.platform, "mail")
+    assert.equal(unified.platform, "gmail")
     assert.equal(unified.subject, "Test subject")
     assert.equal(unified.bodyText, "Hello world")
     assert.equal(unified.threadId, "thread-001")
@@ -62,8 +62,8 @@ describe("toUnifiedMessage", () => {
 
   it("populates mail platform metadata", () => {
     let unified = toUnifiedMessage(makeMessage())
-    assert.equal(unified.platformMetadata.platform, "mail")
-    if (unified.platformMetadata.platform === "mail") {
+    assert.equal(unified.platformMetadata.platform, "gmail")
+    if (unified.platformMetadata.platform === "gmail") {
       assert.equal(unified.platformMetadata.messageId, "msg-001")
       assert.equal(unified.platformMetadata.threadId, "thread-001")
       assert.equal(unified.platformMetadata.rfc822MessageId, "<abc123@example.com>")

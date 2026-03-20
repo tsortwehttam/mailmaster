@@ -4,7 +4,7 @@ import type { Argv } from "yargs"
 import { ingestOnce, watch, buildDefaultStatePath } from "./ingest"
 import { createNdjsonSink, createDirSink, createExecSink } from "./sinks"
 import type { Sink } from "./sinks"
-import { mailSource, markMailRead, fetchMailAttachment } from "../../platforms/mail/MailSource"
+import { gmailSource, markGmailRead, fetchGmailAttachment } from "../../platforms/gmail/MailSource"
 import { slackSource, markSlackRead } from "../../platforms/slack/SlackSource"
 import type { MessageSource } from "./ingest"
 import type { UnifiedMessage } from "../types"
@@ -36,7 +36,7 @@ let buildSink = (argv: {
       outDir,
       saveAttachments: argv.saveAttachments,
       fetchAttachment: argv.saveAttachments
-        ? (msg, filename) => fetchMailAttachment(msg, filename, defaultAccount)
+        ? (msg, filename) => fetchGmailAttachment(msg, filename, defaultAccount)
         : undefined,
     })
   }
@@ -51,27 +51,27 @@ let buildSink = (argv: {
 }
 
 let resolveSources = (accounts: string[]): Array<{ source: MessageSource; accounts: string[] }> => {
-  // Dispatch based on account prefix: "slack:workspace" → Slack, plain name → mail.
-  let mailAccounts: string[] = []
+  // Dispatch based on account prefix: "slack:workspace" → Slack, plain name → gmail.
+  let gmailAccounts: string[] = []
   let slackAccounts: string[] = []
 
   for (let account of accounts) {
     if (account.startsWith("slack:")) {
       slackAccounts.push(account.slice("slack:".length))
     } else {
-      mailAccounts.push(account)
+      gmailAccounts.push(account)
     }
   }
 
   let sources: Array<{ source: MessageSource; accounts: string[] }> = []
-  if (mailAccounts.length) sources.push({ source: mailSource, accounts: mailAccounts })
+  if (gmailAccounts.length) sources.push({ source: gmailSource, accounts: gmailAccounts })
   if (slackAccounts.length) sources.push({ source: slackSource, accounts: slackAccounts })
   return sources
 }
 
 let resolveMarkRead = (msg: UnifiedMessage, account: string) => {
   if (msg.platform === "slack") return markSlackRead(msg, account)
-  return markMailRead(msg, account)
+  return markGmailRead(msg, account)
 }
 
 let sharedOptions = (y: Argv) =>
@@ -195,7 +195,7 @@ export let configureIngestCli = (cli: Argv) =>
         "Output contract:",
         "- --sink=ndjson: one UnifiedMessage JSON per line to stdout. Summary to stderr.",
         "- --sink=dir: one directory per message under --out-dir with unified.json, body.txt, body.html, attachments/.",
-        "- --sink=exec: runs --exec-cmd per message with MESSAGEMON_* env vars and MESSAGEMON_JSON containing the full UnifiedMessage.",
+        "- --sink=exec: runs --exec-cmd per message with MSGMON_* env vars and MSGMON_JSON containing the full UnifiedMessage.",
         "",
         "State:",
         "- Maintains a state file tracking ingested message IDs to avoid reprocessing.",
@@ -247,7 +247,7 @@ export let configureWatchCli = (cli: Argv) =>
           markRead: argv.markRead,
         })
 
-        console.error(`[messagemon] watching ${accounts.join(", ")} — query: ${argv.query} — interval: ${argv.intervalMs}ms`)
+        console.error(`[msgmon] watching ${accounts.join(", ")} — query: ${argv.query} — interval: ${argv.intervalMs}ms`)
 
         await watch({
           sources: resolveSources(accounts),
@@ -275,15 +275,15 @@ export let configureWatchCli = (cli: Argv) =>
         "- Kill with SIGTERM/SIGINT to stop.",
         "",
         "Daemon usage:",
-        "  messagemon watch --account=work --sink=ndjson | my-agent-router",
-        "  messagemon watch --sink=dir --out-dir=/data/inbox --save-attachments &",
+        "  msgmon watch --account=work --sink=ndjson | my-agent-router",
+        "  msgmon watch --sink=dir --out-dir=/data/inbox --save-attachments &",
       ].join("\n"),
     )
     .strict()
     .help()
 
-export let parseIngestCli = (args: string[], scriptName = "messagemon ingest") =>
+export let parseIngestCli = (args: string[], scriptName = "msgmon ingest") =>
   configureIngestCli(yargs(args).scriptName(scriptName)).parseAsync()
 
-export let parseWatchCli = (args: string[], scriptName = "messagemon watch") =>
+export let parseWatchCli = (args: string[], scriptName = "msgmon watch") =>
   configureWatchCli(yargs(args).scriptName(scriptName)).parseAsync()

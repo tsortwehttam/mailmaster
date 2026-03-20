@@ -41,7 +41,7 @@ export let configureAccountsCli = (cli: Argv) =>
     .epilog(
       [
         "Output contract:",
-        "- json: array of account names derived from `./.messagemon/mail/tokens/*.json`, `<install-dir>/.messagemon/mail/tokens/*.json`, and `~/.messagemon/mail/tokens/*.json`.",
+        "- json: array of account names derived from `./.msgmon/gmail/tokens/*.json`, `<install-dir>/.msgmon/gmail/tokens/*.json`, and `~/.msgmon/gmail/tokens/*.json`.",
         "- text: one account name per line.",
       ].join("\n"),
     )

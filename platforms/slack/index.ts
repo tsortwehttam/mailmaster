@@ -2,21 +2,23 @@
  * Slack platform CLI.
  *
  * Credentials layout:
- *   .messagemon/slack/credentials.json      — Slack app manifest (client_id, client_secret)
- *   .messagemon/slack/tokens/<account>.json  — Bot + optional user tokens per workspace
+ *   .msgmon/slack/credentials.json      — Slack app manifest (client_id, client_secret)
+ *   .msgmon/slack/tokens/<account>.json  — Bot + optional user tokens per workspace
  *
  * CLI subcommands:
- *   messagemon slack auth       — Store bot token or run OAuth install flow
- *   messagemon slack accounts   — List configured Slack workspaces
- *   messagemon slack search     — Search messages (requires user token with search:read)
- *   messagemon slack read       — Read a message by channel + ts
- *   messagemon slack send       — Post a message to a channel
+ *   msgmon slack auth       — Store bot token or run OAuth install flow
+ *   msgmon slack accounts   — List configured Slack workspaces
+ *   msgmon slack search     — Search messages (requires user token with search:read)
+ *   msgmon slack read       — Read a message by channel + ts
+ *   msgmon slack send       — Post a message to a channel
  */
 
+import fs from "node:fs"
+import path from "node:path"
 import yargs from "yargs"
 import type { Argv } from "yargs"
 import { DEFAULT_ACCOUNT } from "../../src/CliConfig"
-import { slackClients } from "./slackClient"
+import { slackClients, uploadFilesToChannel } from "./slackClient"
 import { toUnifiedMessage, type UserCache } from "./toUnifiedMessage"
 import type { SlackMessage } from "./toUnifiedMessage"
 
@@ -26,7 +28,7 @@ export let configureSlackCli = (cli: Argv) =>
     .option("account", {
       type: "string",
       default: DEFAULT_ACCOUNT,
-      describe: "Slack workspace account name (uses .messagemon/slack/tokens/<account>.json)",
+      describe: "Slack workspace account name (uses .msgmon/slack/tokens/<account>.json)",
     })
     .option("verbose", {
       alias: "v",
@@ -73,7 +75,7 @@ export let configureSlackCli = (cli: Argv) =>
         let clients = slackClients(argv.account, argv.verbose)
         if (!clients.user) {
           throw new Error(
-            "search requires a user token (xoxp-). Run: messagemon slack auth --mode=oauth",
+            "search requires a user token (xoxp-). Run: msgmon slack auth --mode=oauth",
           )
         }
         let res = await clients.user.search.messages({
@@ -163,7 +165,7 @@ export let configureSlackCli = (cli: Argv) =>
           })
           .option("text", {
             type: "string",
-            demandOption: true,
+            default: "",
             describe: "Message text to send",
           })
           .option("as-user", {
@@ -174,6 +176,18 @@ export let configureSlackCli = (cli: Argv) =>
           .option("thread-ts", {
             type: "string",
             describe: "Thread timestamp to reply to",
+          })
+          .option("attach", {
+            type: "array",
+            string: true,
+            default: [] as string[],
+            describe: "Attachment file path(s), repeatable",
+          })
+          .check(argv => {
+            if (!argv.text && argv.attach.length === 0) {
+              throw new Error("at least one of --text or --attach is required")
+            }
+            return true
           }),
       async argv => {
         let clients = slackClients(argv.account, argv.verbose)
@@ -193,13 +207,37 @@ export let configureSlackCli = (cli: Argv) =>
           channelId = match.id
         }
 
-        let res = await sendClient.chat.postMessage({
-          channel: channelId,
-          text: argv.text,
-          thread_ts: argv.threadTs,
-        })
+        // Send text message if present
+        let messageResult: { ok?: boolean; ts?: string; channel?: string } | null = null
+        if (argv.text) {
+          let res = await sendClient.chat.postMessage({
+            channel: channelId,
+            text: argv.text,
+            thread_ts: argv.threadTs,
+          })
+          messageResult = { ok: res.ok, ts: res.ts, channel: res.channel }
+        }
 
-        console.log(JSON.stringify({ ok: res.ok, ts: res.ts, channel: res.channel }))
+        // Upload attachments if present
+        let filesUploaded = 0
+        if (argv.attach.length > 0) {
+          let files = argv.attach.map(filePath => ({
+            filename: path.basename(filePath),
+            data: fs.readFileSync(filePath),
+          }))
+          await uploadFilesToChannel(sendClient, channelId, files, {
+            threadTs: argv.threadTs ?? messageResult?.ts,
+            initialComment: messageResult ? undefined : argv.text || undefined,
+          })
+          filesUploaded = files.length
+        }
+
+        console.log(JSON.stringify({
+          ok: messageResult?.ok ?? true,
+          ts: messageResult?.ts,
+          channel: messageResult?.channel ?? channelId,
+          filesUploaded,
+        }))
       },
     )
     .demandCommand(1, "Choose a command: auth, accounts, search, read, or send.")

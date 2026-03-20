@@ -24,7 +24,7 @@ export let loadOAuth = (account: string, verbose = false) => {
 export let gmailClient = (account: string, verbose = false) =>
   google.gmail({ version: "v1", auth: loadOAuth(account, verbose) })
 
-export let mailSource: MessageSource = {
+export let gmailSource: MessageSource = {
   async *listMessages(params) {
     let client = gmailClient(params.account, params.verbose)
     let pageToken: string | undefined
@@ -64,8 +64,8 @@ export let mailSource: MessageSource = {
 /**
  * Mark a mail message as read by removing the UNREAD label.
  */
-export let markMailRead = async (msg: UnifiedMessage, account: string) => {
-  if (msg.platformMetadata.platform !== "mail") return
+export let markGmailRead = async (msg: UnifiedMessage, account: string) => {
+  if (msg.platformMetadata.platform !== "gmail") return
   let client = gmailClient(account)
   await client.users.messages.modify({
     userId: "me",
@@ -77,12 +77,12 @@ export let markMailRead = async (msg: UnifiedMessage, account: string) => {
 /**
  * Fetch attachment data for a mail message.
  */
-export let fetchMailAttachment = async (
+export let fetchGmailAttachment = async (
   msg: UnifiedMessage,
   filename: string,
   account: string,
 ): Promise<Buffer | undefined> => {
-  if (msg.platformMetadata.platform !== "mail") return undefined
+  if (msg.platformMetadata.platform !== "gmail") return undefined
   let client = gmailClient(account)
 
   // Re-fetch the message to get attachment IDs

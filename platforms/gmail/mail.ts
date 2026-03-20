@@ -180,7 +180,7 @@ let buildDefaultExportStatePath = (params: { account: string; query: string; out
     outDir: params.outDir,
   })
   let digest = crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)
-  return path.resolve(process.cwd(), ".messagemon", "state", `export-${params.account}-${digest}.json`)
+  return path.resolve(process.cwd(), ".msgmon", "state", `export-${params.account}-${digest}.json`)
 }
 
 let buildExportQuery = (params: {
@@ -248,6 +248,10 @@ let iterateMessageRefs = async function* (params: {
   }
 }
 
+export type AttachmentInput =
+  | string
+  | { filename: string; contentType: string; data: string }
+
 export let buildRawMessage = (params: {
   from?: string
   to: string
@@ -259,7 +263,7 @@ export let buildRawMessage = (params: {
   messageId?: string
   subject: string
   body: string
-  attach: string[]
+  attach: AttachmentInput[]
 }) => {
   let normalizedInReplyTo = normalizeMessageId(params.inReplyTo)
   let normalizedReferences = dedupeReferences(
@@ -277,7 +281,7 @@ export let buildRawMessage = (params: {
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: ${normalizeMessageId(params.messageId) ?? buildMessageId(params.from)}`,
     "MIME-Version: 1.0",
-    "X-Mailer: messagemon/1.0",
+    "X-Mailer: msgmon/1.0",
   ]
 
   if (params.attach.length === 0) {
@@ -287,15 +291,25 @@ export let buildRawMessage = (params: {
     )
   }
 
-  let boundary = `messagemon_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  let boundary = `msgmon_${Date.now()}_${Math.random().toString(36).slice(2)}`
   let parts = [
     `--${boundary}\r\nContent-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n${encodeQuotedPrintable(params.body)}\r\n`,
-    ...params.attach.map(filePath => {
-      let filename = path.basename(filePath).replace(/"/g, "")
-      let content = fs.readFileSync(filePath).toString("base64")
+    ...params.attach.map(attachment => {
+      let filename: string
+      let content: string
+      let mimeType: string
+      if (typeof attachment === "string") {
+        filename = path.basename(attachment).replace(/"/g, "")
+        content = fs.readFileSync(attachment).toString("base64")
+        mimeType = guessMimeType(attachment)
+      } else {
+        filename = attachment.filename.replace(/"/g, "")
+        content = attachment.data
+        mimeType = attachment.contentType
+      }
       return (
         `--${boundary}\r\n` +
-        `Content-Type: ${guessMimeType(filePath)}; name="${filename}"\r\n` +
+        `Content-Type: ${mimeType}; name="${filename}"\r\n` +
         "Content-Transfer-Encoding: base64\r\n" +
         `Content-Disposition: attachment; filename="${filename}"\r\n\r\n` +
         `${chunk76(content)}\r\n`
@@ -307,13 +321,13 @@ export let buildRawMessage = (params: {
   return headers.join("\r\n") + `\r\nContent-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n` + parts.join("")
 }
 
-export let configureMailCli = (cli: Argv) =>
+export let configureGmailCli = (cli: Argv) =>
   cli
     .usage("Usage: $0 <command> [options]")
     .option("account", {
       type: "string",
       default: DEFAULT_ACCOUNT,
-      describe: "Token account name (uses .messagemon/mail/tokens/<account>.json)",
+      describe: "Token account name (uses .msgmon/mail/tokens/<account>.json)",
     })
     .option("verbose", {
       alias: "v",
@@ -970,7 +984,7 @@ export let configureMailCli = (cli: Argv) =>
     .example("$0 export --out-dir=./exports --resume", "Resume the same export using a default incremental state file")
 
     .example("$0 export --out-dir=./exports --scope=inbox --newer-than=7d --has-attachment", "Export recent inbox messages with attachments")
-    .example("$0 export --out-dir=./exports --query='from:billing@example.com' --state=./.messagemon/state/export.json", "Export matching messages incrementally using a state file")
+    .example("$0 export --out-dir=./exports --query='from:billing@example.com' --state=./.msgmon/state/export.json", "Export matching messages incrementally using a state file")
     .example("$0 export --out-dir=./exports --jsonl-out=./exports/export.jsonl", "Append one JSONL manifest record per exported or skipped message")
     .example("$0 read 190cf9f55b05efcc", "Read metadata for one Gmail message id")
     .example("$0 read 190cf9f55b05efcc --format=text", "Read a message with decoded headers and body text")
@@ -1012,7 +1026,7 @@ export let configureMailCli = (cli: Argv) =>
         "- `mark-read` removes the `UNREAD` label from the specified message id.",
         "- `archive` removes the `INBOX` label from the specified message id.",
         "- Requires OAuth scope `https://www.googleapis.com/auth/gmail.modify`.",
-        "- If your existing token predates this scope, rerun `messagemon mail auth --account=<name>`.",
+        "- If your existing token predates this scope, rerun `msgmon mail auth --account=<name>`.",
         "",
         "Send behavior notes:",
         "- `--yes` is required to send (safety flag).",
@@ -1028,14 +1042,14 @@ export let configureMailCli = (cli: Argv) =>
     .recommendCommands()
     .help()
 
-export let parseMailCli = (args: string[], scriptName = "mail") => configureMailCli(yargs(args).scriptName(scriptName)).parseAsync()
+export let parseGmailCli = (args: string[], scriptName = "gmail") => configureGmailCli(yargs(args).scriptName(scriptName)).parseAsync()
 
-export let runMailCli = (args = hideBin(process.argv), scriptName = "mail") =>
-  parseMailCli(args, scriptName).catch(e => {
+export let runGmailCli = (args = hideBin(process.argv), scriptName = "gmail") =>
+  parseGmailCli(args, scriptName).catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
-  runMailCli()
+  runGmailCli()
 }

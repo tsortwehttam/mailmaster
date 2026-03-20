@@ -1,8 +1,8 @@
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { parseAccountsCli } from "../platforms/mail/accounts"
-import { parseAuthCli } from "../platforms/mail/auth"
-import { parseMailCli } from "../platforms/mail/mail"
+import { parseAccountsCli } from "../platforms/gmail/accounts"
+import { parseAuthCli } from "../platforms/gmail/auth"
+import { parseGmailCli } from "../platforms/gmail/mail"
 import { parseCorpusCli } from "../src/corpus/cli"
 import { parseIngestCli, parseWatchCli } from "../src/ingest/cli"
 import { parseSlackCli } from "../platforms/slack"
@@ -12,7 +12,7 @@ import { parseServeCli } from "../src/serve/cli"
 import { verboseLog } from "../src/Verbose"
 
 let args = hideBin(process.argv)
-let subcommands = new Set(["mail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "help"])
+let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "help"])
 let verbose = args.includes("--verbose") || args.includes("-v")
 let commandIndex = args.findIndex(x => !x.startsWith("-"))
 let command = commandIndex >= 0 ? args[commandIndex] : undefined
@@ -21,7 +21,7 @@ let forwardedVerboseArgs = verbose ? ["--verbose"] : []
 let dispatched = false
 
 let cli = yargs(args)
-  .scriptName("messagemon")
+  .scriptName("msgmon")
   .usage("Usage: $0 <command> [options]")
   .option("verbose", {
     alias: "v",
@@ -29,7 +29,7 @@ let cli = yargs(args)
     default: false,
     describe: "Print diagnostic details to stderr",
   })
-  .command("mail", "Gmail: search, read, send, export, thread, count, mark-read, archive")
+  .command("gmail", "Gmail: search, read, send, export, thread, count, mark-read, archive")
   .command("ingest", "One-shot: ingest new messages across accounts, emit to sink, then exit (cron-friendly)")
   .command("watch", "Daemon: continuously ingest new messages across accounts, emit to sink as they arrive")
   .command("corpus", "Build LLM-oriented corpus (messages.jsonl, chunks.jsonl, threads.jsonl) from ingested messages")
@@ -44,7 +44,7 @@ let cli = yargs(args)
       y
         .positional("platform", {
           type: "string",
-          choices: ["mail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve"] as const,
+          choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve"] as const,
           describe: "Platform or command to show help for",
         })
         .positional("command", {
@@ -57,14 +57,14 @@ let cli = yargs(args)
         return
       }
       let helpArgs = argv.command ? [argv.command, "--help"] : ["--help"]
-      if (argv.platform === "mail") return parseMailCli(helpArgs, "messagemon mail")
-      if (argv.platform === "ingest") return parseIngestCli(helpArgs, "messagemon ingest")
-      if (argv.platform === "watch") return parseWatchCli(helpArgs, "messagemon watch")
-      if (argv.platform === "corpus") return parseCorpusCli(helpArgs, "messagemon corpus")
-      if (argv.platform === "serve") return parseServeCli(helpArgs, "messagemon serve")
-      if (argv.platform === "slack") return parseSlackCli(helpArgs, "messagemon slack")
-      if (argv.platform === "teams") return parseTeamsCli(helpArgs, "messagemon teams")
-      if (argv.platform === "whatsapp") return parseWhatsAppCli(helpArgs, "messagemon whatsapp")
+      if (argv.platform === "gmail") return parseGmailCli(helpArgs, "msgmon gmail")
+      if (argv.platform === "ingest") return parseIngestCli(helpArgs, "msgmon ingest")
+      if (argv.platform === "watch") return parseWatchCli(helpArgs, "msgmon watch")
+      if (argv.platform === "corpus") return parseCorpusCli(helpArgs, "msgmon corpus")
+      if (argv.platform === "serve") return parseServeCli(helpArgs, "msgmon serve")
+      if (argv.platform === "slack") return parseSlackCli(helpArgs, "msgmon slack")
+      if (argv.platform === "teams") return parseTeamsCli(helpArgs, "msgmon teams")
+      if (argv.platform === "whatsapp") return parseWhatsAppCli(helpArgs, "msgmon whatsapp")
     },
   )
   .example("$0 help", "Show top-level help")
@@ -81,7 +81,7 @@ let cli = yargs(args)
   .epilog(
     [
       "Commands:",
-      "  mail      — Gmail operations: search, read, send, export, etc.",
+      "  gmail     — Gmail operations: search, read, send, export, etc.",
       "  ingest    — One-shot multi-account ingest. Cron-friendly. Emits UnifiedMessage.",
       "  watch     — Continuous multi-account daemon. Emits UnifiedMessage as they arrive.",
       "  corpus    — Build LLM corpus from ingested message directories.",
@@ -95,10 +95,10 @@ let cli = yargs(args)
       "Sinks (for ingest/watch):",
       "  ndjson    — One JSON line per message to stdout (pipe-friendly)",
       "  dir       — Scannable directory per message (unified.json, body.txt, attachments/)",
-      "  exec      — Run a shell command per message with MESSAGEMON_* env vars",
+      "  exec      — Run a shell command per message with MSGMON_* env vars",
       "",
-      "Each platform stores credentials and tokens under .messagemon/<platform>/.",
-      "Use `messagemon mail auth` to set up Gmail credentials.",
+      "Each platform stores credentials and tokens under .msgmon/<platform>/.",
+      "Use `msgmon gmail auth` to set up Gmail credentials.",
       "Use `--verbose` at any level for stderr diagnostics.",
     ].join("\n"),
   )
@@ -143,26 +143,26 @@ if (!dispatched && (args[0] === "--help" || args[0] === "-h")) {
 }
 
 // ---------------------------------------------------------------------------
-// Mail platform — dispatches to sub-parsers for mail-specific commands
+// Gmail platform — dispatches to sub-parsers for gmail-specific commands
 // ---------------------------------------------------------------------------
 
-if (!dispatched && command === "mail") {
-  let mailSubcommand = commandArgs.find(x => !x.startsWith("-"))
+if (!dispatched && command === "gmail") {
+  let gmailSubcommand = commandArgs.find(x => !x.startsWith("-"))
 
-  if (mailSubcommand === "auth") {
+  if (gmailSubcommand === "auth") {
     let authArgs = commandArgs.filter(x => x !== "auth")
-    parseAuthCli([...forwardedVerboseArgs, ...authArgs], "messagemon mail auth").catch(e => {
+    parseAuthCli([...forwardedVerboseArgs, ...authArgs], "msgmon gmail auth").catch(e => {
       console.error(e?.message ?? e)
       process.exit(1)
     })
-  } else if (mailSubcommand === "accounts") {
+  } else if (gmailSubcommand === "accounts") {
     let accountsArgs = commandArgs.filter(x => x !== "accounts")
-    parseAccountsCli([...forwardedVerboseArgs, ...accountsArgs], "messagemon mail accounts").catch(e => {
+    parseAccountsCli([...forwardedVerboseArgs, ...accountsArgs], "msgmon gmail accounts").catch(e => {
       console.error(e?.message ?? e)
       process.exit(1)
     })
   } else {
-    parseMailCli([...forwardedVerboseArgs, ...commandArgs], "messagemon mail").catch(e => {
+    parseGmailCli([...forwardedVerboseArgs, ...commandArgs], "msgmon gmail").catch(e => {
       console.error(e?.message ?? e)
       process.exit(1)
     })
@@ -174,7 +174,7 @@ if (!dispatched && command === "mail") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "ingest") {
-  parseIngestCli([...forwardedVerboseArgs, ...commandArgs], "messagemon ingest").catch(e => {
+  parseIngestCli([...forwardedVerboseArgs, ...commandArgs], "msgmon ingest").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -185,7 +185,7 @@ else if (!dispatched && command === "ingest") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "watch") {
-  parseWatchCli([...forwardedVerboseArgs, ...commandArgs], "messagemon watch").catch(e => {
+  parseWatchCli([...forwardedVerboseArgs, ...commandArgs], "msgmon watch").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -196,7 +196,7 @@ else if (!dispatched && command === "watch") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "corpus") {
-  parseCorpusCli([...forwardedVerboseArgs, ...commandArgs], "messagemon corpus").catch(e => {
+  parseCorpusCli([...forwardedVerboseArgs, ...commandArgs], "msgmon corpus").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -207,7 +207,7 @@ else if (!dispatched && command === "corpus") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "serve") {
-  parseServeCli([...forwardedVerboseArgs, ...commandArgs], "messagemon serve").catch(e => {
+  parseServeCli([...forwardedVerboseArgs, ...commandArgs], "msgmon serve").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -218,7 +218,7 @@ else if (!dispatched && command === "serve") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "slack") {
-  parseSlackCli([...forwardedVerboseArgs, ...commandArgs], "messagemon slack").catch(e => {
+  parseSlackCli([...forwardedVerboseArgs, ...commandArgs], "msgmon slack").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -229,7 +229,7 @@ else if (!dispatched && command === "slack") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "teams") {
-  parseTeamsCli([...forwardedVerboseArgs, ...commandArgs], "messagemon teams").catch(e => {
+  parseTeamsCli([...forwardedVerboseArgs, ...commandArgs], "msgmon teams").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -240,7 +240,7 @@ else if (!dispatched && command === "teams") {
 // ---------------------------------------------------------------------------
 
 else if (!dispatched && command === "whatsapp") {
-  parseWhatsAppCli([...forwardedVerboseArgs, ...commandArgs], "messagemon whatsapp").catch(e => {
+  parseWhatsAppCli([...forwardedVerboseArgs, ...commandArgs], "msgmon whatsapp").catch(e => {
     console.error(e?.message ?? e)
     process.exit(1)
   })
@@ -256,22 +256,22 @@ else if (!dispatched && command === "help") {
     process.exit(0)
   }
   let subhelp = commandArgs[0]
-  if (subhelp === "mail") {
-    parseMailCli([...forwardedVerboseArgs, "--help"], "messagemon mail")
+  if (subhelp === "gmail") {
+    parseGmailCli([...forwardedVerboseArgs, "--help"], "msgmon gmail")
   } else if (subhelp === "ingest") {
-    parseIngestCli([...forwardedVerboseArgs, "--help"], "messagemon ingest")
+    parseIngestCli([...forwardedVerboseArgs, "--help"], "msgmon ingest")
   } else if (subhelp === "watch") {
-    parseWatchCli([...forwardedVerboseArgs, "--help"], "messagemon watch")
+    parseWatchCli([...forwardedVerboseArgs, "--help"], "msgmon watch")
   } else if (subhelp === "corpus") {
-    parseCorpusCli([...forwardedVerboseArgs, "--help"], "messagemon corpus")
+    parseCorpusCli([...forwardedVerboseArgs, "--help"], "msgmon corpus")
   } else if (subhelp === "serve") {
-    parseServeCli([...forwardedVerboseArgs, "--help"], "messagemon serve")
+    parseServeCli([...forwardedVerboseArgs, "--help"], "msgmon serve")
   } else if (subhelp === "slack") {
-    parseSlackCli([...forwardedVerboseArgs, "--help"], "messagemon slack")
+    parseSlackCli([...forwardedVerboseArgs, "--help"], "msgmon slack")
   } else if (subhelp === "teams") {
-    parseTeamsCli([...forwardedVerboseArgs, "--help"], "messagemon teams")
+    parseTeamsCli([...forwardedVerboseArgs, "--help"], "msgmon teams")
   } else if (subhelp === "whatsapp") {
-    parseWhatsAppCli([...forwardedVerboseArgs, "--help"], "messagemon whatsapp")
+    parseWhatsAppCli([...forwardedVerboseArgs, "--help"], "msgmon whatsapp")
   } else {
     cli.parseAsync().catch(e => {
       console.error(e?.message ?? e)

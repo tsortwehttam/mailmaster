@@ -185,7 +185,7 @@ export let configureAuthCli = (cli: Argv) =>
     .option("account", {
       type: "string",
       default: DEFAULT_ACCOUNT,
-      describe: "Account name (writes .messagemon/slack/tokens/<account>.json)",
+      describe: "Account name (writes .msgmon/slack/tokens/<account>.json)",
     })
     .option("mode", {
       type: "string",

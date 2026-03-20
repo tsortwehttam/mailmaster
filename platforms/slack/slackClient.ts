@@ -25,6 +25,27 @@ export let loadSlackTokenFile = (account: string): SlackTokenFile => {
   return raw as SlackTokenFile
 }
 
+export let uploadFilesToChannel = async (
+  client: WebClient,
+  channelId: string,
+  files: Array<{ filename: string; data: Buffer }>,
+  opts?: { threadTs?: string; initialComment?: string },
+) => {
+  let results = []
+  for (let file of files) {
+    let r = await client.filesUploadV2({
+      channel_id: channelId,
+      file: file.data,
+      filename: file.filename,
+      title: file.filename,
+      thread_ts: opts?.threadTs,
+      initial_comment: results.length === 0 ? opts?.initialComment : undefined,
+    })
+    results.push(r)
+  }
+  return results
+}
+
 export let slackClients = (account: string, verbose = false): SlackClients => {
   let tokenFile = loadSlackTokenFile(account)
   verboseLog(verbose, "slack auth", {
