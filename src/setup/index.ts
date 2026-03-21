@@ -193,7 +193,9 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
     return true
   }
 
-  console.log("Auth mode: 1) Bot token (xoxb-..., simplest)  2) OAuth (browser flow)")
+  console.log("Auth mode:")
+  console.log("1) Bot token — paste a token (recommended, simplest)")
+  console.log("2) OAuth — browser flow (needed for search and send-as-user)")
   let mode = await prompt("Mode [1]: ")
 
   if (mode === "2") {
@@ -201,7 +203,15 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
     let credPath = resolveCredentialsPath("slack")
     let hasCredentials = fs.existsSync(credPath)
     if (!hasCredentials) {
-      console.log(`Save your Slack app credentials as: ${credPath}`)
+      let { BOT_SCOPES, USER_SCOPES } = await import("../../platforms/slack/auth")
+      console.log("To create a Slack app for OAuth:")
+      console.log("1. Go to https://api.slack.com/apps > Create New App > From scratch")
+      console.log("2. Name it anything (e.g. \"msgmon\") and pick your workspace")
+      console.log(`3. Under OAuth & Permissions, add Bot Token Scopes: ${BOT_SCOPES.replace(/,/g, ", ")}`)
+      console.log(`4. Under OAuth & Permissions, add User Token Scopes: ${USER_SCOPES.replace(/,/g, ", ")}`)
+      console.log("5. Under OAuth & Permissions > Redirect URLs, add: http://127.0.0.1:9876")
+      console.log("6. Copy Client ID and Client Secret from Basic Information")
+      console.log(`7. Save as: ${credPath}`)
       console.log(`Format: { "client_id": "...", "client_secret": "..." }`)
       await waitForEnter("Press Enter after saving credentials.json...")
       if (!fs.existsSync(credPath)) {
@@ -223,6 +233,11 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
   }
 
   // Bot token mode
+  console.log("To get a bot token:")
+  console.log("1. Go to https://api.slack.com/apps > Create New App > From scratch")
+  console.log("2. Name it anything (e.g. \"msgmon\") and pick your workspace")
+  console.log("3. Under OAuth & Permissions, add Bot Token Scopes: channels:history, channels:read, groups:history, groups:read, im:history, mpim:history, users:read, chat:write")
+  console.log("4. Click Install to Workspace, then copy the Bot User OAuth Token")
   let token = await prompt("Paste your Slack bot token (xoxb-...): ")
   if (!token) {
     fail("No token provided.")

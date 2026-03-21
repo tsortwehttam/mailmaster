@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import http from "node:http"
 import crypto from "node:crypto"
+import { exec } from "node:child_process"
 import { URL } from "node:url"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -47,8 +48,9 @@ let authBot = async (account: string, token: string, verbose = false) => {
 // ---------------------------------------------------------------------------
 
 let SLACK_OAUTH_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
+let OAUTH_PORTS = [9876, 9877, 9878, 9879, 9880]
 
-let BOT_SCOPES = [
+export let BOT_SCOPES = [
   "channels:history",
   "channels:read",
   "groups:history",
@@ -59,10 +61,36 @@ let BOT_SCOPES = [
   "chat:write",
 ].join(",")
 
-let USER_SCOPES = [
+export let USER_SCOPES = [
   "search:read",
   "chat:write",
 ].join(",")
+
+let tryListen = (server: http.Server, ports: number[]): Promise<number> =>
+  new Promise((resolve, reject) => {
+    let attempt = (i: number) => {
+      if (i >= ports.length) {
+        reject(new Error(
+          `Could not start local server — ports ${ports[0]}-${ports[ports.length - 1]} are in use.\n` +
+          `Check what's using them with: lsof -i :${ports[0]}`
+        ))
+        return
+      }
+      server.once("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") attempt(i + 1)
+        else reject(err)
+      })
+      server.listen(ports[i], "127.0.0.1", () => resolve(ports[i]))
+    }
+    attempt(0)
+  })
+
+let openBrowser = (url: string) => {
+  let cmd = process.platform === "darwin" ? "open"
+    : process.platform === "win32" ? "start"
+    : "xdg-open"
+  exec(`${cmd} ${JSON.stringify(url)}`, () => {})
+}
 
 let authOAuth = async (account: string, verbose = false) => {
   let credentialsPath = resolveCredentialsPath("slack")
@@ -72,14 +100,25 @@ let authOAuth = async (account: string, verbose = false) => {
   let clientId = creds.client_id
   let clientSecret = creds.client_secret
   if (!clientId || !clientSecret) {
-    throw new Error(`credentials.json must contain client_id and client_secret`)
+    throw new Error(
+      `${credentialsPath} must contain "client_id" and "client_secret".\n` +
+      `Expected format: { "client_id": "...", "client_secret": "..." }\n` +
+      `Find these under "Basic Information" in your Slack app settings.`
+    )
   }
 
   let state = crypto.randomBytes(16).toString("hex")
 
   // Start a local HTTP server to receive the OAuth callback
+  let server = http.createServer()
+  let port = await tryListen(server, OAUTH_PORTS)
+  let redirectUri = `http://127.0.0.1:${port}`
+
+  console.log(`Make sure your Slack app has this Redirect URL: ${redirectUri}`)
+  console.log(`(OAuth & Permissions > Redirect URLs at https://api.slack.com/apps)`)
+
   let { code, receivedState } = await new Promise<{ code: string; receivedState: string }>((resolve, reject) => {
-    let server = http.createServer((req, res) => {
+    server.on("request", (req, res) => {
       let url = new URL(req.url!, `http://localhost`)
       let code = url.searchParams.get("code")
       let receivedState = url.searchParams.get("state")
@@ -105,23 +144,16 @@ let authOAuth = async (account: string, verbose = false) => {
       resolve({ code, receivedState: receivedState ?? "" })
     })
 
-    server.listen(0, "127.0.0.1", () => {
-      let addr = server.address()
-      if (!addr || typeof addr === "string") {
-        reject(new Error("Failed to start local server"))
-        return
-      }
-      let redirectUri = `http://127.0.0.1:${addr.port}`
-      let authUrl =
-        `${SLACK_OAUTH_AUTHORIZE_URL}?client_id=${clientId}&scope=${BOT_SCOPES}` +
-        `&user_scope=${USER_SCOPES}&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&state=${state}`
+    let authUrl =
+      `${SLACK_OAUTH_AUTHORIZE_URL}?client_id=${clientId}&scope=${BOT_SCOPES}` +
+      `&user_scope=${USER_SCOPES}&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${state}`
 
-      console.log(`\nOpen this URL in your browser to authorize:\n\n  ${authUrl}\n`)
-      console.log("Waiting for callback...")
-    })
+    openBrowser(authUrl)
+    console.log(`Opening browser... if it didn't open, visit:`)
+    console.log(authUrl)
+    console.log("Waiting for callback...")
 
-    // Timeout after 5 minutes
     setTimeout(() => {
       server.close()
       reject(new Error("OAuth callback timed out after 5 minutes"))
@@ -134,11 +166,11 @@ let authOAuth = async (account: string, verbose = false) => {
 
   // Exchange code for tokens
   let client = new WebClient()
-  let addr = `http://127.0.0.1` // redirect_uri must match; we use the same base
   let oauthResponse = await client.oauth.v2.access({
     client_id: clientId,
     client_secret: clientSecret,
     code,
+    redirect_uri: redirectUri,
   })
 
   if (!oauthResponse.ok) {
