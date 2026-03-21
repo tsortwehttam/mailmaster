@@ -107,6 +107,8 @@ let authOAuth = async (account: string, verbose = false) => {
     `&user_scope=${USER_SCOPES}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}` +
     `&state=${state}`
 
+  console.log(`Make sure your Slack app has this Redirect URL: ${OAUTH_REDIRECT_URI}`)
+  console.log("(OAuth & Permissions > Redirect URLs)")
   openBrowser(authUrl)
   console.log("Opening browser... if it didn't open, visit:")
   console.log(authUrl)
