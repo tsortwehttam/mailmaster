@@ -28,64 +28,66 @@ let parseScopedToken = (value: string): TokenSpec => {
 export let configureServeCli = (cli: Argv) =>
   cli
     .usage("Usage: $0 [dir] [options]")
-    .positional("dir", {
-      type: "string",
-      describe: "Workspace directory to serve (defaults to current directory)",
-    })
-    .option("port", {
-      type: "number",
-      default: 3271,
-      describe: "Port to listen on",
-    })
-    .option("host", {
-      type: "string",
-      default: "127.0.0.1",
-      describe: "Host/address to bind to",
-    })
-    .option("token", {
-      type: "array",
-      string: true,
-      default: [],
-      coerce: normalizeMultiValue,
-      describe: "Full-access token(s) for X-Auth-Token auth",
-    })
-    .option("scoped-token", {
-      type: "array",
-      string: true,
-      default: [],
-      coerce: normalizeMultiValue,
-      describe: "Scoped token(s) in the form <token>=<cap1>,<cap2>",
-    })
-    .option("gmail-allow-to", {
-      type: "array",
-      string: true,
-      default: [],
-      coerce: normalizeMultiValue,
-      describe: "Allowed Gmail recipients; sends to others are silently stripped",
-    })
-    .option("slack-allow-channels", {
-      type: "array",
-      string: true,
-      default: [],
-      coerce: normalizeMultiValue,
-      describe: "Allowed Slack channels; sends to others are rejected",
-    })
-    .option("send-rate-limit", {
-      type: "number",
-      default: 0,
-      coerce: (value: number) => {
-        if (value != null && (!Number.isFinite(value) || value < 0))
-          throw new Error("--send-rate-limit must be a non-negative number")
-        return Math.floor(value)
-      },
-      describe: "Max sends per minute across all platforms (0 = unlimited)",
-    })
-    .option("verbose", {
-      alias: "v",
-      type: "boolean",
-      default: false,
-      describe: "Print diagnostic details to stderr",
-    })
+    .command("$0 [dir]", false, y =>
+      y
+        .positional("dir", {
+          type: "string",
+          describe: "Workspace directory to serve (defaults to current directory)",
+        })
+        .option("port", {
+          type: "number",
+          default: 3271,
+          describe: "Port to listen on",
+        })
+        .option("host", {
+          type: "string",
+          default: "127.0.0.1",
+          describe: "Host/address to bind to",
+        })
+        .option("token", {
+          type: "array",
+          string: true,
+          default: [],
+          coerce: normalizeMultiValue,
+          describe: "Full-access token(s) for X-Auth-Token auth",
+        })
+        .option("scoped-token", {
+          type: "array",
+          string: true,
+          default: [],
+          coerce: normalizeMultiValue,
+          describe: "Scoped token(s) in the form <token>=<cap1>,<cap2>",
+        })
+        .option("gmail-allow-to", {
+          type: "array",
+          string: true,
+          default: [],
+          coerce: normalizeMultiValue,
+          describe: "Allowed Gmail recipients; sends to others are silently stripped",
+        })
+        .option("slack-allow-channels", {
+          type: "array",
+          string: true,
+          default: [],
+          coerce: normalizeMultiValue,
+          describe: "Allowed Slack channels; sends to others are rejected",
+        })
+        .option("send-rate-limit", {
+          type: "number",
+          default: 0,
+          coerce: (value: number) => {
+            if (value != null && (!Number.isFinite(value) || value < 0))
+              throw new Error("--send-rate-limit must be a non-negative number")
+            return Math.floor(value)
+          },
+          describe: "Max sends per minute across all platforms (0 = unlimited)",
+        })
+        .option("verbose", {
+          alias: "v",
+          type: "boolean",
+          default: false,
+          describe: "Print diagnostic details to stderr",
+        }))
     .example("$0 --token=mysecret", "Start server on default port with a full-access token")
     .example("$0 --token=mysecret --gmail-allow-to=a@x.com,b@x.com", "Only allow sends to a@x.com and b@x.com")
     .example("$0 --token=mysecret --slack-allow-channels=general,alerts", "Only allow Slack posts to #general and #alerts")
@@ -150,12 +152,13 @@ export let configureServeCli = (cli: Argv) =>
         "Request bodies are validated with Zod. Errors return { ok: false, error: '...' }.",
       ].join("\n"),
     )
+    .demandCommand(0)
     .strict()
     .help()
 
 export let parseServeCli = async (args: string[], scriptName = "msgmon serve") => {
   let argv = await configureServeCli(yargs(args).scriptName(scriptName)).parseAsync()
-  let dir = path.resolve(argv.dir ?? ".")
+  let dir = path.resolve((argv.dir as string | undefined) ?? ".")
   fs.mkdirSync(dir, { recursive: true })
   setWorkspaceDir(dir)
   let generatedToken: string | undefined
@@ -179,12 +182,12 @@ export let parseServeCli = async (args: string[], scriptName = "msgmon serve") =
     console.log(`[msgmon] saved local server config: ${localConfig.serverUrl} -> ${singleFullAccessToken ? "token saved" : "no default token saved"}`)
   }
   await startServer({
-    port: argv.port,
-    host: argv.host,
+    port: argv.port as number,
+    host: argv.host as string,
     tokens,
-    verbose: argv.verbose,
-    gmailAllowTo: argv.gmailAllowTo,
-    slackAllowChannels: argv.slackAllowChannels,
-    sendRateLimit: argv.sendRateLimit,
+    verbose: argv.verbose as boolean,
+    gmailAllowTo: argv.gmailAllowTo as string[],
+    slackAllowChannels: argv.slackAllowChannels as string[],
+    sendRateLimit: argv.sendRateLimit as number,
   })
 }
