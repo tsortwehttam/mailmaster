@@ -77,28 +77,32 @@ export let ingestOnce = async (params: IngestParams): Promise<{ ingested: number
   for (let { source, accounts } of params.sources) {
     for (let account of accounts) {
       verboseLog(params.verbose, "ingest scanning", { account, query: params.query })
-      for await (let msg of source.listMessages({
-        account,
-        query: params.query,
-        maxResults: params.maxResults,
-        verbose: params.verbose,
-      })) {
-        scanned += 1
-        if (state.ingested[msg.id]) continue
+      try {
+        for await (let msg of source.listMessages({
+          account,
+          query: params.query,
+          maxResults: params.maxResults,
+          verbose: params.verbose,
+        })) {
+          scanned += 1
+          if (state.ingested[msg.id]) continue
 
-        if (!params.seed) {
-          await params.sink.write(msg)
+          if (!params.seed) {
+            await params.sink.write(msg)
 
-          if (params.doMarkRead && params.markRead) {
-            await params.markRead(msg, account)
+            if (params.doMarkRead && params.markRead) {
+              await params.markRead(msg, account)
+            }
           }
-        }
 
-        state.ingested[msg.id] = new Date().toISOString()
-        writeIngestState(params.statePath, state)
-        ingested += 1
+          state.ingested[msg.id] = new Date().toISOString()
+          writeIngestState(params.statePath, state)
+          ingested += 1
+        }
+      } catch (err) {
+        let orig = err instanceof Error ? err.message : String(err)
+        throw new Error(`[account: ${account}] ${orig}`)
       }
-    }
   }
 
   return { ingested, scanned }

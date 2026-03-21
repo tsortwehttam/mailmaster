@@ -21,6 +21,15 @@ export let loadOAuth = (account: string, verbose = false) => {
   return o
 }
 
+export let loadGmailProjectId = (): string | undefined => {
+  try {
+    let credentialsPath = resolveCredentialsPath("gmail")
+    let raw = JSON.parse(fs.readFileSync(credentialsPath, "utf8"))
+    let c = raw.installed ?? raw.web
+    return c?.project_id
+  } catch { return undefined }
+}
+
 export let gmailClient = (account: string, verbose = false) =>
   google.gmail({ version: "v1", auth: loadOAuth(account, verbose) })
 
