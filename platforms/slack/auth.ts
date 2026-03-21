@@ -107,14 +107,17 @@ let authOAuth = async (account: string, verbose = false) => {
     `&user_scope=${USER_SCOPES}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}` +
     `&state=${state}`
 
-  console.log(`Make sure your Slack app has this Redirect URL: ${OAUTH_REDIRECT_URI}`)
-  console.log("(OAuth & Permissions > Redirect URLs)")
+  let rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+
+  console.log(`Add this Redirect URL to your Slack app (OAuth & Permissions > Redirect URLs):`)
+  console.log(OAUTH_REDIRECT_URI)
+  await rl.question("Press Enter when done...")
+
   openBrowser(authUrl)
   console.log("Opening browser... if it didn't open, visit:")
   console.log(authUrl)
   console.log("After authorizing, you'll see a page with a code. Paste it here.")
 
-  let rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   let input = await rl.question("Paste URL or code: ")
   rl.close()
 
