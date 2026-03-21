@@ -6,23 +6,18 @@ let withShared = (y: Argv) =>
   y
     .option("server", {
       type: "string",
-      describe: "msgmon serve base URL (defaults to local .msgmon/serve.json, then http://127.0.0.1:3271)",
+      describe: "Messaging proxy server base URL (defaults to local .msgmon/serve.json, then http://127.0.0.1:3271)",
     })
     .option("token", {
       type: "string",
       describe: "X-Auth-Token value (defaults to local .msgmon/serve.json token when present)",
     })
-    .option("workspace", {
-      type: "string",
-      demandOption: true,
-      describe: "Server workspace id",
-    })
     .option("dir", {
       type: "string",
-      describe: "Local agent-safe workspace mirror directory (defaults to ./.msgmon/agent/<workspace>)",
+      describe: "Local agent-safe workspace mirror directory (defaults to current directory)",
     })
 
-export let configureSyncCli = (cli: Argv) =>
+export let configureClientCli = (cli: Argv) =>
   cli
     .usage("Usage: $0 <command> [options]")
     .command(
@@ -37,7 +32,6 @@ export let configureSyncCli = (cli: Argv) =>
         let result = await syncPull({
           serverUrl: argv.server,
           token: argv.token,
-          workspaceId: argv.workspace,
           dir: argv.dir,
           force: argv.force,
         })
@@ -50,7 +44,7 @@ export let configureSyncCli = (cli: Argv) =>
       y =>
         y.option("dir", {
           type: "string",
-          describe: "Local agent-safe workspace mirror directory (defaults to ./.msgmon/agent/<workspace> when --workspace is provided)",
+          describe: "Local agent-safe workspace mirror directory (defaults to current directory)",
         })
           .option("server", {
             type: "string",
@@ -59,18 +53,12 @@ export let configureSyncCli = (cli: Argv) =>
           .option("token", {
             type: "string",
             describe: "Override token from local session state",
-          })
-          .option("workspace", {
-            type: "string",
-            describe: "Override workspace id from local session state",
           }),
       async argv => {
-        if (!argv.dir && !argv.workspace) throw new Error("Pass --dir or --workspace so the local session directory can be resolved")
         let result = await syncPush({
           dir: argv.dir,
           serverUrl: argv.server,
           token: argv.token,
-          workspaceId: argv.workspace,
         })
         console.log(JSON.stringify(result, null, 2))
       },
@@ -99,7 +87,6 @@ export let configureSyncCli = (cli: Argv) =>
         await syncWatch({
           serverUrl: argv.server,
           token: argv.token,
-          workspaceId: argv.workspace,
           dir: argv.dir,
           intervalMs: argv.intervalMs,
           force: argv.force,
@@ -150,7 +137,6 @@ export let configureSessionCli = (cli: Argv) =>
         let result = await startSession({
           serverUrl: argv.server,
           token: argv.token,
-          workspaceId: argv.workspace,
           dir: argv.dir,
           intervalMs: argv.intervalMs,
           watch: argv.watch,
@@ -167,14 +153,10 @@ export let configureSessionCli = (cli: Argv) =>
       y =>
         y.option("dir", {
           type: "string",
-          describe: "Local agent-safe workspace mirror directory",
-        }).option("workspace", {
-          type: "string",
-          describe: "Workspace id used to derive the default local mirror directory",
+          describe: "Local agent-safe workspace mirror directory (defaults to current directory)",
         }),
       async argv => {
-        let dir = argv.dir ?? (argv.workspace ? defaultSessionDir(argv.workspace) : undefined)
-        if (!dir) throw new Error("Pass --dir or --workspace")
+        let dir = argv.dir ?? defaultSessionDir()
         console.log(JSON.stringify(loadSessionState(dir), null, 2))
       },
     )
@@ -184,14 +166,10 @@ export let configureSessionCli = (cli: Argv) =>
       y =>
         y.option("dir", {
           type: "string",
-          describe: "Local agent-safe workspace mirror directory",
-        }).option("workspace", {
-          type: "string",
-          describe: "Workspace id used to derive the default local mirror directory",
+          describe: "Local agent-safe workspace mirror directory (defaults to current directory)",
         }),
       async argv => {
-        let dir = argv.dir ?? (argv.workspace ? defaultSessionDir(argv.workspace) : undefined)
-        if (!dir) throw new Error("Pass --dir or --workspace")
+        let dir = argv.dir ?? defaultSessionDir()
         console.log(JSON.stringify(stopSessionWatch(dir), null, 2))
       },
     )
@@ -200,7 +178,10 @@ export let configureSessionCli = (cli: Argv) =>
     .help()
 
 export let parseSyncCli = (args: string[], scriptName = "msgmon sync") =>
-  configureSyncCli(yargs(args).scriptName(scriptName)).parseAsync()
+  configureClientCli(yargs(args).scriptName(scriptName)).parseAsync()
+
+export let parseClientCli = (args: string[], scriptName = "msgmon client") =>
+  configureClientCli(yargs(args).scriptName(scriptName)).parseAsync()
 
 export let parseSessionCli = (args: string[], scriptName = "msgmon session") =>
   configureSessionCli(yargs(args).scriptName(scriptName)).parseAsync()

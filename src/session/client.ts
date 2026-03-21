@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { spawn } from "node:child_process"
-import { PWD_CONFIG_DIR } from "../CliConfig"
+import { currentWorkspaceDir } from "../CliConfig"
+import { DEFAULT_WORKSPACE_ID } from "../defaults"
 import { DEFAULT_SERVER_URL, loadServeLocalConfig } from "../serve/localConfig"
 
 export type WorkspaceExportFile = {
@@ -58,8 +59,7 @@ let SESSION_PID_PATH = "watch.pid"
 
 let normalizeServerUrl = (serverUrl: string) => serverUrl.replace(/\/+$/, "")
 
-export let defaultSessionDir = (workspaceId: string) =>
-  path.resolve(PWD_CONFIG_DIR, "agent", workspaceId)
+export let defaultSessionDir = () => currentWorkspaceDir()
 
 export let resolveSessionConnection = (params: { serverUrl?: string; token?: string }) => {
   let localConfig = loadServeLocalConfig()
@@ -204,11 +204,12 @@ let ensureInitializedDirectory = (dir: string, force = false) => {
 export let syncPull = async (params: {
   serverUrl?: string
   token?: string
-  workspaceId: string
+  workspaceId?: string
   dir?: string
   force?: boolean
 }) => {
-  let dir = path.resolve(params.dir ?? defaultSessionDir(params.workspaceId))
+  let workspaceId = params.workspaceId ?? DEFAULT_WORKSPACE_ID
+  let dir = path.resolve(params.dir ?? defaultSessionDir())
   let connection = resolveSessionConnection({ serverUrl: params.serverUrl, token: params.token })
   ensureInitializedDirectory(dir, params.force)
 
@@ -222,7 +223,7 @@ export let syncPull = async (params: {
     serverUrl: connection.serverUrl,
     token: connection.token,
     route: "/api/workspace/export",
-    body: { workspaceId: params.workspaceId, format: "snapshot" },
+    body: { workspaceId, format: "snapshot" },
   })
 
   let previous = loadState(dir)
@@ -236,7 +237,7 @@ export let syncPull = async (params: {
   writeSnapshot(dir, snapshot)
   let state: SessionState = {
     serverUrl: connection.serverUrl,
-    workspaceId: params.workspaceId,
+    workspaceId,
     token: connection.token,
     lastRevision: snapshot.revision,
     lastSnapshot: snapshot,
@@ -259,7 +260,7 @@ export let syncPush = async (params: {
   token?: string
   workspaceId?: string
 }) => {
-  let dir = path.resolve(params.dir ?? defaultSessionDir(params.workspaceId ?? "default"))
+  let dir = path.resolve(params.dir ?? defaultSessionDir())
   let state = loadState(dir)
   if (!state) throw new Error(`No session state found in "${dir}". Run sync pull first.`)
 
@@ -328,7 +329,7 @@ export let syncPush = async (params: {
 export let syncWatch = async (params: {
   serverUrl?: string
   token?: string
-  workspaceId: string
+  workspaceId?: string
   dir?: string
   intervalMs: number
   force?: boolean
@@ -364,7 +365,7 @@ export let syncWatch = async (params: {
 export let startSession = async (params: {
   serverUrl?: string
   token?: string
-  workspaceId: string
+  workspaceId?: string
   dir?: string
   intervalMs?: number
   watch?: boolean
@@ -372,7 +373,8 @@ export let startSession = async (params: {
   agentCommand?: string
   force?: boolean
 }) => {
-  let dir = path.resolve(params.dir ?? defaultSessionDir(params.workspaceId))
+  let workspaceId = params.workspaceId ?? DEFAULT_WORKSPACE_ID
+  let dir = path.resolve(params.dir ?? defaultSessionDir())
   let connection = resolveSessionConnection({ serverUrl: params.serverUrl, token: params.token })
   try {
     await request({
@@ -380,7 +382,7 @@ export let startSession = async (params: {
       token: connection.token,
       route: "/api/workspace/refresh",
       body: {
-        workspaceId: params.workspaceId,
+        workspaceId,
         syncContext: true,
       },
     })
@@ -390,7 +392,7 @@ export let startSession = async (params: {
   let pull = await syncPull({
     serverUrl: connection.serverUrl,
     token: connection.token,
-    workspaceId: params.workspaceId,
+    workspaceId,
     dir,
     force: params.force,
   })
@@ -399,11 +401,10 @@ export let startSession = async (params: {
   if (params.watch) {
     let child = spawn(process.execPath, [
       process.argv[1]!,
-      "sync",
+      "client",
       "watch",
       `--server=${connection.serverUrl}`,
       `--token=${connection.token}`,
-      `--workspace=${params.workspaceId}`,
       `--dir=${dir}`,
       `--interval-ms=${params.intervalMs ?? pull.pollIntervalMs}`,
       ...(params.autoPush === false ? ["--no-auto-push"] : []),

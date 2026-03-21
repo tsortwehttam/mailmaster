@@ -1,7 +1,11 @@
+import fs from "node:fs"
+import path from "node:path"
 import yargs from "yargs"
 import type { Argv } from "yargs"
-import { initWorkspace, loadWorkspaceConfig, listWorkspaceIds } from "./store"
+import { setWorkspaceDir } from "../CliConfig"
+import { DEFAULT_WORKSPACE_ID } from "../defaults"
 import { inferWorkspaceAccounts } from "./accounts"
+import { initWorkspace, loadWorkspaceConfig, listWorkspaceIds } from "./store"
 import { refreshWorkspace, syncWorkspaceContext } from "./runtime"
 import { verboseLog } from "../Verbose"
 import { DEFAULT_GMAIL_WORKSPACE_QUERY } from "../defaults"
@@ -15,22 +19,30 @@ let normalizeMultiValue = (value: unknown) => {
     .filter(Boolean)
 }
 
+let resolveWorkspaceDir = (dir?: string) => {
+  let resolved = path.resolve(dir ?? ".")
+  fs.mkdirSync(resolved, { recursive: true })
+  setWorkspaceDir(resolved)
+  return resolved
+}
+
+let withDir = (y: Argv) =>
+  y.positional("dir", {
+    type: "string",
+    describe: "Workspace directory (defaults to current directory)",
+  })
+
 export let configureWorkspaceCli = (cli: Argv) =>
   cli
-    .usage("Usage: $0 <command> [options]")
+    .usage("Usage: $0 <command> [dir] [options]")
     .command(
-      "init <id>",
-      "Create a server-managed workspace under .msgmon/workspaces/<id>",
+      "init [dir]",
+      "Create or initialize a workspace in a directory",
       y =>
-        y
-          .positional("id", {
-            type: "string",
-            demandOption: true,
-            describe: "Workspace identifier",
-          })
+        withDir(y)
           .option("name", {
             type: "string",
-            describe: "Workspace display name (defaults to id)",
+            describe: "Workspace display name (defaults to directory name)",
           })
           .option("account", {
             type: "array",
@@ -46,7 +58,7 @@ export let configureWorkspaceCli = (cli: Argv) =>
           .option("context-window-days", {
             type: "number",
             default: 14,
-            describe: "Default historical context window in days for workspace/context",
+            describe: "Default historical context window in days",
           })
           .option("context-max-results", {
             type: "number",
@@ -56,21 +68,28 @@ export let configureWorkspaceCli = (cli: Argv) =>
           .option("context-query", {
             type: "string",
             describe: "Optional Gmail-only base query for historical context sync",
+          })
+          .option("overwrite", {
+            type: "boolean",
+            default: false,
+            describe: "Overwrite an existing workspace directory",
           }),
       async argv => {
+        let dir = resolveWorkspaceDir(argv.dir)
         let inferredAccounts = !argv.account || argv.account.length === 0
         let accounts: string[] = inferredAccounts ? inferWorkspaceAccounts() : (argv.account ?? [])
         if (accounts.length === 0) {
           throw new Error("No accounts provided and none inferred from ./.msgmon/<platform>/tokens/")
         }
 
-        let result = initWorkspace(argv.id!, {
-          name: argv.name,
+        let result = initWorkspace(DEFAULT_WORKSPACE_ID, {
+          name: argv.name ?? path.basename(dir),
           accounts,
           query: argv.query,
           contextWindowDays: argv.contextWindowDays,
           contextMaxResults: argv.contextMaxResults,
           contextQuery: argv.contextQuery,
+          overwrite: argv.overwrite,
         })
 
         console.log(JSON.stringify({
@@ -83,15 +102,10 @@ export let configureWorkspaceCli = (cli: Argv) =>
       },
     )
     .command(
-      "refresh <id>",
-      "Ingest new messages into the server-owned workspace inbox",
+      "refresh [dir]",
+      "Ingest new messages into the workspace inbox",
       y =>
-        y
-          .positional("id", {
-            type: "string",
-            demandOption: true,
-            describe: "Workspace identifier",
-          })
+        withDir(y)
           .option("max-results", {
             type: "number",
             default: 100,
@@ -115,20 +129,20 @@ export let configureWorkspaceCli = (cli: Argv) =>
           .option("sync-context", {
             type: "boolean",
             default: false,
-            describe: "Also sync historical context into workspace/context",
+            describe: "Also sync historical context into context/",
           })
           .option("context-max-results", {
             type: "number",
-            describe: "Override workspace context max-results for this run",
+            describe: "Override context max-results for this run",
           })
           .option("context-since", {
             type: "string",
-            describe: "Backfill Gmail context since YYYY-MM-DD",
+            describe: "Backfill context since YYYY-MM-DD",
           })
           .option("clear-context", {
             type: "boolean",
             default: false,
-            describe: "Clear workspace/context and reset its state before syncing",
+            describe: "Clear context/ and reset its state before syncing",
           })
           .option("verbose", {
             alias: "v",
@@ -137,16 +151,10 @@ export let configureWorkspaceCli = (cli: Argv) =>
             describe: "Print diagnostic details to stderr",
           }),
       async argv => {
-        verboseLog(argv.verbose, "workspace refresh", {
-          workspaceId: argv.id,
-          maxResults: argv.maxResults,
-          markRead: argv.markRead,
-          saveAttachments: argv.saveAttachments,
-          seed: argv.seed,
-        })
-
+        let dir = resolveWorkspaceDir(argv.dir)
+        verboseLog(argv.verbose, "workspace refresh", { dir, maxResults: argv.maxResults })
         let result = await refreshWorkspace({
-          workspaceId: argv.id!,
+          workspaceId: DEFAULT_WORKSPACE_ID,
           maxResults: argv.maxResults,
           markRead: argv.markRead,
           saveAttachments: argv.saveAttachments,
@@ -157,23 +165,14 @@ export let configureWorkspaceCli = (cli: Argv) =>
           clearContext: argv.clearContext,
           verbose: argv.verbose,
         })
-
-        console.log(JSON.stringify({
-          workspaceId: argv.id,
-          ...result,
-        }, null, 2))
+        console.log(JSON.stringify({ path: dir, workspaceId: DEFAULT_WORKSPACE_ID, ...result }, null, 2))
       },
     )
     .command(
-      "context-sync <id>",
-      "Sync historical context into the server-owned workspace context directory",
+      "context-sync [dir]",
+      "Sync historical context into context/",
       y =>
-        y
-          .positional("id", {
-            type: "string",
-            demandOption: true,
-            describe: "Workspace identifier",
-          })
+        withDir(y)
           .option("max-results", {
             type: "number",
             default: 200,
@@ -181,17 +180,17 @@ export let configureWorkspaceCli = (cli: Argv) =>
           })
           .option("since", {
             type: "string",
-            describe: "Backfill Gmail context since YYYY-MM-DD",
+            describe: "Backfill context since YYYY-MM-DD",
           })
           .option("clear", {
             type: "boolean",
             default: false,
-            describe: "Clear workspace/context and reset its state before syncing",
+            describe: "Clear context/ and reset its state before syncing",
           })
           .option("save-attachments", {
             type: "boolean",
             default: false,
-            describe: "Download and save attachments into context message directories",
+            describe: "Download and save attachments into context/",
           })
           .option("verbose", {
             alias: "v",
@@ -200,41 +199,34 @@ export let configureWorkspaceCli = (cli: Argv) =>
             describe: "Print diagnostic details to stderr",
           }),
       async argv => {
+        let dir = resolveWorkspaceDir(argv.dir)
         let result = await syncWorkspaceContext({
-          workspaceId: argv.id!,
+          workspaceId: DEFAULT_WORKSPACE_ID,
           maxResults: argv.maxResults,
           saveAttachments: argv.saveAttachments,
           verbose: argv.verbose,
           since: argv.since,
           clear: argv.clear,
         })
-
-        console.log(JSON.stringify({
-          workspaceId: argv.id,
-          ...result,
-        }, null, 2))
+        console.log(JSON.stringify({ path: dir, workspaceId: DEFAULT_WORKSPACE_ID, ...result }, null, 2))
       },
     )
     .command(
-      "show <id>",
-      "Show workspace configuration",
-      y =>
-        y.positional("id", {
-          type: "string",
-          demandOption: true,
-          describe: "Workspace identifier",
-        }),
+      "show [dir]",
+      "Show workspace configuration for a directory",
+      y => withDir(y),
       async argv => {
-        let config = loadWorkspaceConfig(argv.id!)
-        console.log(JSON.stringify(config, null, 2))
+        resolveWorkspaceDir(argv.dir)
+        console.log(JSON.stringify(loadWorkspaceConfig(DEFAULT_WORKSPACE_ID), null, 2))
       },
     )
     .command(
-      "list",
-      "List workspace ids",
-      () => {},
-      async () => {
-        console.log(JSON.stringify({ workspaces: listWorkspaceIds() }, null, 2))
+      "list [dir]",
+      "Show whether a directory contains a workspace",
+      y => withDir(y),
+      async argv => {
+        let dir = resolveWorkspaceDir(argv.dir)
+        console.log(JSON.stringify({ path: dir, workspaces: listWorkspaceIds() }, null, 2))
       },
     )
     .demandCommand(1, "Choose a command: init, refresh, context-sync, show, or list.")

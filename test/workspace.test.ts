@@ -10,6 +10,7 @@ let workspaceStore: typeof import("../src/workspace/store")
 let workspaceApi: typeof import("../src/workspace/api")
 let draftStore: typeof import("../src/draft/store")
 let workspaceAccounts: typeof import("../src/workspace/accounts")
+let cliConfig: typeof import("../src/CliConfig")
 
 let makeDraft = (id: string) => ({
   id,
@@ -30,6 +31,7 @@ before(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msgmon-workspace-test-"))
   fs.symlinkSync(path.join(prevCwd, "node_modules"), path.join(tmpDir, "node_modules"), "dir")
   process.chdir(tmpDir)
+  cliConfig = await import("../src/CliConfig")
   workspaceStore = await import("../src/workspace/store")
   workspaceApi = await import("../src/workspace/api")
   draftStore = await import("../src/draft/store")
@@ -42,7 +44,15 @@ after(() => {
 })
 
 describe("workspace store", () => {
+  let useDir = (name: string) => {
+    let dir = path.join(tmpDir, name)
+    fs.mkdirSync(dir, { recursive: true })
+    cliConfig.setWorkspaceDir(dir)
+    return dir
+  }
+
   it("creates a server-managed workspace and exports only agent-safe files", () => {
+    let dir = useDir("alpha")
     let result = workspaceStore.initWorkspace("alpha", {
       name: "Alpha Workspace",
       accounts: ["default", "slack:team"],
@@ -52,12 +62,13 @@ describe("workspace store", () => {
     assert.equal(result.config.id, "alpha")
     assert.equal(result.config.contextWindowDays, 14)
     assert.equal(result.config.contextMaxResults, 200)
+    assert.equal(result.path, dir)
     assert.ok(fs.existsSync(path.join(result.path, "workspace.json")))
     assert.ok(fs.existsSync(path.join(result.path, "inbox")))
     assert.ok(fs.existsSync(path.join(result.path, "context")))
-    assert.ok(fs.existsSync(path.join(result.path, ".server", "state")))
+    assert.ok(fs.existsSync(path.join(result.path, ".msgmon", "state")))
 
-    fs.writeFileSync(path.join(result.path, ".server", "secret.txt"), "do not export")
+    fs.writeFileSync(path.join(result.path, ".msgmon", "secret.txt"), "do not export")
     fs.writeFileSync(path.join(result.path, "context", "note.txt"), "history")
 
     let snapshot = workspaceStore.exportWorkspaceSnapshot("alpha")
@@ -65,10 +76,11 @@ describe("workspace store", () => {
     assert.ok(paths.includes("workspace.json"))
     assert.ok(paths.includes("status.md"))
     assert.ok(paths.includes("context/note.txt"))
-    assert.ok(!paths.some(file => file.startsWith(".server/")))
+    assert.ok(!paths.some(file => file.startsWith(".msgmon/")))
   })
 
   it("applies bounded pushes, validates drafts, and detects stale revisions", () => {
+    useDir("beta")
     workspaceStore.initWorkspace("beta")
     let initial = workspaceStore.exportWorkspaceSnapshot("beta")
     let updatedStatus = Buffer.from("# Status\n\nUpdated\n", "utf8").toString("base64")
@@ -105,6 +117,7 @@ describe("workspace store", () => {
   })
 
   it("exports and imports workspace bundles", () => {
+    useDir("bundle-src")
     workspaceStore.initWorkspace("bundle-src", { name: "Bundle Source" })
     workspaceStore.applyWorkspacePush("bundle-src", {
       baseRevision: workspaceStore.exportWorkspaceSnapshot("bundle-src").revision,
@@ -115,6 +128,7 @@ describe("workspace store", () => {
     })
 
     let bundle = workspaceStore.exportWorkspaceBundle("bundle-src")
+    useDir("bundle-dst")
     let imported = workspaceStore.importWorkspaceBundle({
       workspaceId: "bundle-dst",
       bundleBase64: bundle.bundleBase64,
@@ -129,6 +143,8 @@ describe("workspace store", () => {
 
 describe("workspace API handlers", () => {
   it("supports export, push, and actions against the server-owned model", async () => {
+    cliConfig.setWorkspaceDir(path.join(tmpDir, "gamma"))
+    fs.mkdirSync(path.join(tmpDir, "gamma"), { recursive: true })
     workspaceStore.initWorkspace("gamma")
     let handlers = workspaceApi.createWorkspaceHandlers({
       gmailAllowTo: ["allowed@example.com"],
@@ -162,11 +178,13 @@ describe("workspace API handlers", () => {
 
 describe("workspace init account inference", () => {
   it("infers local gmail and slack accounts when --account is omitted", async () => {
-    fs.mkdirSync(path.join(tmpDir, ".msgmon", "gmail", "tokens"), { recursive: true })
-    fs.mkdirSync(path.join(tmpDir, ".msgmon", "slack", "tokens"), { recursive: true })
-    fs.writeFileSync(path.join(tmpDir, ".msgmon", "gmail", "tokens", "alpha.json"), "{}\n")
-    fs.writeFileSync(path.join(tmpDir, ".msgmon", "gmail", "tokens", "beta.json"), "{}\n")
-    fs.writeFileSync(path.join(tmpDir, ".msgmon", "slack", "tokens", "drinksuperoot.json"), "{}\n")
+    let dir = path.join(tmpDir, "accounts-a")
+    fs.mkdirSync(path.join(dir, ".msgmon", "gmail", "tokens"), { recursive: true })
+    fs.mkdirSync(path.join(dir, ".msgmon", "slack", "tokens"), { recursive: true })
+    fs.writeFileSync(path.join(dir, ".msgmon", "gmail", "tokens", "alpha.json"), "{}\n")
+    fs.writeFileSync(path.join(dir, ".msgmon", "gmail", "tokens", "beta.json"), "{}\n")
+    fs.writeFileSync(path.join(dir, ".msgmon", "slack", "tokens", "drinksuperoot.json"), "{}\n")
+    cliConfig.setWorkspaceDir(dir)
 
     assert.deepEqual(
       workspaceAccounts.inferWorkspaceAccounts(),
@@ -175,14 +193,17 @@ describe("workspace init account inference", () => {
   })
 
   it("errors when no accounts are provided and no local tokens exist", async () => {
-    fs.rmSync(path.join(tmpDir, ".msgmon", "gmail"), { recursive: true, force: true })
-    fs.rmSync(path.join(tmpDir, ".msgmon", "slack"), { recursive: true, force: true })
+    let dir = path.join(tmpDir, "accounts-b")
+    fs.mkdirSync(dir, { recursive: true })
+    cliConfig.setWorkspaceDir(dir)
     assert.deepEqual(workspaceAccounts.inferWorkspaceAccounts(), [])
   })
 
   it("returns only local token-backed accounts", async () => {
-    fs.mkdirSync(path.join(tmpDir, ".msgmon", "gmail", "tokens"), { recursive: true })
-    fs.writeFileSync(path.join(tmpDir, ".msgmon", "gmail", "tokens", "manual.json"), "{}\n")
+    let dir = path.join(tmpDir, "accounts-c")
+    fs.mkdirSync(path.join(dir, ".msgmon", "gmail", "tokens"), { recursive: true })
+    fs.writeFileSync(path.join(dir, ".msgmon", "gmail", "tokens", "manual.json"), "{}\n")
+    cliConfig.setWorkspaceDir(dir)
     assert.deepEqual(workspaceAccounts.inferWorkspaceAccounts(), ["manual"])
   })
 })

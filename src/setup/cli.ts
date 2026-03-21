@@ -1,17 +1,25 @@
 import yargs from "yargs"
 import type { Argv } from "yargs"
+import path from "node:path"
+import fs from "node:fs"
+import { setWorkspaceDir } from "../CliConfig"
 import { runSetup } from "./index"
 
 export let configureSetupCli = (cli: Argv) =>
   cli
-    .usage("Usage: $0 [options]")
+    .usage("Usage: $0 [dir] [options]")
+    .positional("dir", {
+      type: "string",
+      describe: "Workspace directory to initialize (defaults to current directory)",
+    })
     .option("workspace", {
       type: "string",
       default: "default",
-      describe: "Workspace id to create/verify",
+      hidden: true,
+      describe: "Internal workspace id to create/verify",
     })
-    .example("$0", "Interactive guided setup")
-    .example("$0 --workspace=inbox", "Set up with workspace named 'inbox'")
+    .example("$0", "Interactive guided setup in the current directory")
+    .example("$0 ./assistant-workspace", "Create the directory if needed and set it up as a workspace")
     .epilog(
       [
         "Walks through the full setup process interactively:",
@@ -30,5 +38,8 @@ export let configureSetupCli = (cli: Argv) =>
 
 export let parseSetupCli = async (args: string[], scriptName = "msgmon setup") => {
   let argv = await configureSetupCli(yargs(args).scriptName(scriptName)).parseAsync()
+  let dir = path.resolve(argv.dir ?? ".")
+  fs.mkdirSync(dir, { recursive: true })
+  setWorkspaceDir(dir)
   await runSetup({ workspace: argv.workspace })
 }

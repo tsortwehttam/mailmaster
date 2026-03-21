@@ -8,6 +8,7 @@ import http from "node:http"
 let tmpDir: string
 let prevCwd: string
 let serverModule: typeof import("../src/serve/server")
+let cliConfig: typeof import("../src/CliConfig")
 
 let requestJson = async (params: {
   port: number
@@ -49,6 +50,7 @@ before(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msgmon-serve-integration-"))
   fs.symlinkSync(path.join(prevCwd, "node_modules"), path.join(tmpDir, "node_modules"), "dir")
   process.chdir(tmpDir)
+  cliConfig = await import("../src/CliConfig")
   serverModule = await import("../src/serve/server")
 })
 
@@ -59,6 +61,9 @@ after(() => {
 
 describe("serve integration", () => {
   it("enforces per-token capabilities and supports workspace bundle export/import over HTTP", async () => {
+    let serverDir = path.join(tmpDir, "serve-http")
+    fs.mkdirSync(serverDir, { recursive: true })
+    cliConfig.setWorkspaceDir(serverDir)
     let server = serverModule.createServer({
       host: "127.0.0.1",
       port: 0,
@@ -87,7 +92,7 @@ describe("serve integration", () => {
         port,
         route: "/api/workspace/bootstrap",
         token: "writer",
-        body: { workspaceId: "http-ws", name: "HTTP Workspace", accounts: ["default"], query: "is:unread" },
+        body: { name: "HTTP Workspace", accounts: ["default"], query: "is:unread" },
       })
       assert.equal(bootstrap.status, 200)
 
@@ -95,7 +100,7 @@ describe("serve integration", () => {
         port,
         route: "/api/workspace/export",
         token: "writer",
-        body: { workspaceId: "http-ws" },
+        body: {},
       })
       assert.equal(forbiddenExport.status, 403)
 
@@ -104,7 +109,6 @@ describe("serve integration", () => {
         route: "/api/draft/compose",
         token: "writer",
         body: {
-          workspaceId: "http-ws",
           platform: "gmail",
           account: "default",
           to: "allowed@example.com",
@@ -119,7 +123,7 @@ describe("serve integration", () => {
         port,
         route: "/api/workspace/export",
         token: "reader",
-        body: { workspaceId: "http-ws", format: "bundle" },
+        body: { format: "bundle" },
       })
       assert.equal(exported.status, 200)
       let bundleBase64 = (exported.body.data as { bundleBase64: string }).bundleBase64
@@ -129,15 +133,17 @@ describe("serve integration", () => {
         port,
         route: "/api/workspace/import",
         token: "writer",
-        body: { workspaceId: "http-copy", bundleBase64 },
+        body: { workspaceId: "http-copy", bundleBase64, overwrite: true },
       })
       assert.equal(imported.status, 200)
+      let importedConfig = imported.body.data as { config: { id: string } }
+      assert.equal(importedConfig.config.id, "http-copy")
 
       let list = await requestJson({
         port,
         route: "/api/draft/list",
         token: "writer",
-        body: { workspaceId: "http-copy" },
+        body: {},
       })
       assert.equal(list.status, 200)
       let drafts = (list.body.data as { drafts: Array<{ id: string }> }).drafts
@@ -149,7 +155,6 @@ describe("serve integration", () => {
         route: "/api/workspace/actions",
         token: "actor",
         body: {
-          workspaceId: "http-copy",
           actions: [{ type: "draft.delete", draftId }],
         },
       })

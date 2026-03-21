@@ -3,8 +3,8 @@ import path from "node:path"
 import crypto from "node:crypto"
 import zlib from "node:zlib"
 import { z } from "zod"
-import { PWD_CONFIG_DIR } from "../CliConfig"
-import { DEFAULT_GMAIL_WORKSPACE_QUERY } from "../defaults"
+import { PWD_CONFIG_DIR, LOCAL_CONFIG_DIRNAME, currentWorkspaceDir } from "../CliConfig"
+import { DEFAULT_GMAIL_WORKSPACE_QUERY, DEFAULT_WORKSPACE_ID } from "../defaults"
 import { Draft } from "../draft/schema"
 
 export interface WorkspaceConfig {
@@ -127,12 +127,12 @@ let WorkspaceConfigSchema = z.object({
   updatedAt: z.string(),
 })
 
-let relativePath = (workspaceId: string, ...parts: string[]) => path.resolve(PWD_CONFIG_DIR, "workspaces", workspaceId, ...parts)
+let relativePath = (...parts: string[]) => path.resolve(currentWorkspaceDir(), ...parts)
 
-export let workspaceRoot = (workspaceId: string) => relativePath(workspaceId)
-export let workspaceServerRoot = (workspaceId: string) => relativePath(workspaceId, SERVER_DIRNAME)
-export let workspaceStateRoot = (workspaceId: string) => relativePath(workspaceId, SERVER_DIRNAME, "state")
-export let workspaceDraftsRoot = (workspaceId: string) => relativePath(workspaceId, "drafts")
+export let workspaceRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => relativePath()
+export let workspaceServerRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => path.resolve(PWD_CONFIG_DIR)
+export let workspaceStateRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => path.resolve(PWD_CONFIG_DIR, "state")
+export let workspaceDraftsRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => relativePath("drafts")
 
 let ensureSafeWorkspaceId = (workspaceId: string) => {
   if (!/^[A-Za-z0-9._-]+$/.test(workspaceId)) {
@@ -209,7 +209,7 @@ let computeRevision = (files: WorkspaceExportFile[]) => {
 }
 
 export let initWorkspace = (
-  workspaceId: string,
+  workspaceId = DEFAULT_WORKSPACE_ID,
   options: {
     name?: string
     accounts?: string[]
@@ -225,9 +225,9 @@ export let initWorkspace = (
   let root = workspaceRoot(id)
 
   if (fs.existsSync(root)) {
-    let entries = fs.readdirSync(root)
+    let entries = fs.readdirSync(root).filter(entry => entry !== LOCAL_CONFIG_DIRNAME)
     if (entries.length > 0 && !options.overwrite) {
-      throw new Error(`Workspace "${id}" already exists and is not empty`)
+      throw new Error(`Workspace directory "${root}" already exists and is not empty`)
     }
     if (entries.length > 0 && options.overwrite) removePathIfExists(root)
   }
@@ -260,19 +260,16 @@ export let initWorkspace = (
 }
 
 export let listWorkspaceIds = () => {
-  let root = path.resolve(PWD_CONFIG_DIR, "workspaces")
-  if (!fs.existsSync(root)) return []
-  return fs.readdirSync(root, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => entry.name)
-    .sort()
+  let configPath = path.resolve(workspaceRoot(DEFAULT_WORKSPACE_ID), "workspace.json")
+  if (!fs.existsSync(configPath)) return []
+  return [loadWorkspaceConfig(DEFAULT_WORKSPACE_ID).id]
 }
 
-export let loadWorkspaceConfig = (workspaceId: string): WorkspaceConfig => {
+export let loadWorkspaceConfig = (workspaceId = DEFAULT_WORKSPACE_ID): WorkspaceConfig => {
   let id = ensureSafeWorkspaceId(workspaceId)
   let configPath = path.resolve(workspaceRoot(id), "workspace.json")
   if (!fs.existsSync(configPath)) {
-    throw new Error(`Workspace "${id}" not found`)
+    throw new Error(`Workspace not found in "${workspaceRoot(id)}"`)
   }
   return WorkspaceConfigSchema.parse(JSON.parse(fs.readFileSync(configPath, "utf8")))
 }
@@ -337,11 +334,11 @@ export let importWorkspaceBundle = (params: {
     throw new Error(`Unsupported workspace bundle format "${(bundle as { format?: string }).format ?? "unknown"}"`)
   }
 
-  let workspaceId = ensureSafeWorkspaceId(params.workspaceId ?? bundle.workspaceId)
+  let workspaceId = ensureSafeWorkspaceId(params.workspaceId ?? bundle.workspaceId ?? DEFAULT_WORKSPACE_ID)
   let root = workspaceRoot(workspaceId)
   if (fs.existsSync(root) && !params.overwrite) {
-    let entries = fs.readdirSync(root)
-    if (entries.length > 0) throw new Error(`Workspace "${workspaceId}" already exists and is not empty`)
+    let entries = fs.readdirSync(root).filter(entry => entry !== LOCAL_CONFIG_DIRNAME)
+    if (entries.length > 0) throw new Error(`Workspace directory "${root}" already exists and is not empty`)
   }
 
   initWorkspace(workspaceId, {

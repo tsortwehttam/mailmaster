@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { DEFAULT_GMAIL_WORKSPACE_QUERY } from "../defaults"
+import { DEFAULT_GMAIL_WORKSPACE_QUERY, DEFAULT_WORKSPACE_ID } from "../defaults"
 
 // ---------------------------------------------------------------------------
 // Shared
@@ -118,7 +118,7 @@ export type IngestRequest = z.infer<typeof IngestRequest>
 // ---------------------------------------------------------------------------
 
 export let WorkspaceIdParam = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
 })
 export type WorkspaceIdParam = z.infer<typeof WorkspaceIdParam>
 
@@ -151,7 +151,7 @@ export let WorkspaceBootstrapRequest = WorkspaceIdParam.extend({
 export type WorkspaceBootstrapRequest = z.infer<typeof WorkspaceBootstrapRequest>
 
 export let WorkspaceImportRequest = z.object({
-  workspaceId: z.string().min(1).optional(),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   bundleBase64: z.string().min(1, "bundleBase64 is required"),
   overwrite: z.boolean().default(false),
 })
@@ -221,7 +221,7 @@ export type WorkspaceActionRequest = z.infer<typeof WorkspaceActionRequest>
 // ---------------------------------------------------------------------------
 
 export let DraftComposeGmailRequest = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   platform: z.literal("gmail"),
   account: z.string().default("default"),
   label: z.string().optional(),
@@ -240,7 +240,7 @@ export let DraftComposeGmailRequest = z.object({
 })
 
 export let DraftComposeSlackRequest = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   platform: z.literal("slack"),
   account: z.string().default("default"),
   label: z.string().optional(),
@@ -258,23 +258,23 @@ export let DraftComposeRequest = z.discriminatedUnion("platform", [
 export type DraftComposeRequest = z.infer<typeof DraftComposeRequest>
 
 export let DraftIdParam = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   id: z.string().min(1, "id is required"),
 })
 
 export let DraftListRequest = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   platform: z.enum(["gmail", "slack"]).optional(),
 })
 
 export let DraftSendRequest = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   id: z.string().min(1, "id is required"),
   keep: z.boolean().default(false),
 })
 
 export let DraftUpdateRequest = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
+  workspaceId: z.string().min(1).default(DEFAULT_WORKSPACE_ID),
   id: z.string().min(1, "id is required"),
   label: z.string().optional(),
   to: z.string().optional(),

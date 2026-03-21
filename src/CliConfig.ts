@@ -13,6 +13,16 @@ export let APP_CONFIG_DIR = path.resolve(APP_DIR, LOCAL_CONFIG_DIRNAME)
 export let GLOBAL_CONFIG_DIR = path.resolve(os.homedir(), ".msgmon")
 export let TOKEN_FILE_EXTENSION = ".json"
 
+export let setPwdConfigDir = (dir: string) => {
+  PWD_CONFIG_DIR = path.resolve(dir)
+}
+
+export let setWorkspaceDir = (dir: string) => {
+  PWD_CONFIG_DIR = path.resolve(dir, LOCAL_CONFIG_DIRNAME)
+}
+
+export let currentWorkspaceDir = () => path.dirname(PWD_CONFIG_DIR)
+
 // ---------------------------------------------------------------------------
 // Config directory resolution (prepended → pwd → app-install → home)
 // ---------------------------------------------------------------------------

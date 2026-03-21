@@ -11,12 +11,12 @@ import { parseWhatsAppCli } from "../platforms/whatsapp"
 import { parseServeCli } from "../src/serve/cli"
 import { parseDraftCli } from "../src/draft/cli"
 import { parseWorkspaceCli } from "../src/workspace/cli"
-import { parseSessionCli, parseSyncCli } from "../src/session/cli"
+import { parseClientCli, parseSessionCli, parseSyncCli } from "../src/session/cli"
 import { parseSetupCli } from "../src/setup/cli"
 import { verboseLog } from "../src/Verbose"
 
 let args = hideBin(process.argv)
-let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "sync", "session", "setup", "help"])
+let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "sync", "client", "session", "setup", "help"])
 let verbose = args.includes("--verbose") || args.includes("-v")
 let commandIndex = args.findIndex(x => !x.startsWith("-"))
 let command = commandIndex >= 0 ? args[commandIndex] : undefined
@@ -27,7 +27,7 @@ let helpBuilder = (y: import("yargs").Argv) =>
   y
     .positional("platform", {
       type: "string",
-      choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "sync", "session", "setup"] as const,
+      choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "workspace", "sync", "client", "session", "setup"] as const,
       describe: "Platform or command to show help for",
     })
     .positional("command", {
@@ -51,9 +51,10 @@ let cli = yargs(args)
   .command("setup", "Interactive guided setup: credentials, auth, workspace, and seed in one flow")
   .command("serve", "HTTP API server: secret-holding control plane with policy-gated workspace sync")
   .command("draft", "Compose, list, send, edit, and delete message drafts")
-  .command("workspace", "Create and refresh server-managed agent workspaces")
-  .command("sync", "Sync an agent-safe local workspace mirror against serve")
-  .command("session", "Bootstrap and supervise a local agent session against serve")
+  .command("workspace", "Initialize and refresh a workspace directory")
+  .command("client", "Pull, watch, and start an agent-safe client mirror against serve")
+  .command("sync", "Alias for client pull/push/watch")
+  .command("session", "Alias for client start/status/stop")
   .command("slack", "Slack: auth, search, read, send messages")
   .command("teams", "Teams: search, read, send messages (planned)")
   .command("whatsapp", "WhatsApp: read, send messages (planned)")
@@ -79,6 +80,7 @@ let cli = yargs(args)
       else if (platform === "whatsapp") await parseWhatsAppCli(helpArgs, "msgmon whatsapp")
       else if (platform === "draft") await parseDraftCli(helpArgs, "msgmon draft")
       else if (platform === "workspace") await parseWorkspaceCli(helpArgs, "msgmon workspace")
+      else if (platform === "client") await parseClientCli(helpArgs, "msgmon client")
       else if (platform === "sync") await parseSyncCli(helpArgs, "msgmon sync")
       else if (platform === "session") await parseSessionCli(helpArgs, "msgmon session")
     },
@@ -104,9 +106,10 @@ let cli = yargs(args)
       "  setup     — Interactive guided setup: credentials, auth, workspace, and seed.",
       "  serve     — Secret-holding HTTP control plane with policy-gated workspace sync.",
       "  draft     — Compose, list, send, edit, and delete message drafts.",
-      "  workspace — Create and refresh server-managed agent workspaces.",
-      "  sync      — Pull, push, and watch a local agent workspace mirror.",
-      "  session   — Bootstrap a local agent session and optional watcher.",
+      "  workspace — Initialize and refresh a workspace directory.",
+      "  client    — Pull, push, watch, or start an agent-safe client mirror.",
+      "  sync      — Alias for client pull/push/watch.",
+      "  session   — Alias for client start/status/stop.",
       "",
       "Platforms:",
       "  slack     — Slack via @slack/web-api",
@@ -301,6 +304,17 @@ else if (!dispatched && command === "sync") {
 }
 
 // ---------------------------------------------------------------------------
+// Client — preferred alias for agent-safe local mirrors
+// ---------------------------------------------------------------------------
+
+else if (!dispatched && command === "client") {
+  parseClientCli([...forwardedVerboseArgs, ...commandArgs], "msgmon client").catch(e => {
+    console.error(e?.message ?? e)
+    process.exit(1)
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Setup — interactive guided setup
 // ---------------------------------------------------------------------------
 
@@ -352,6 +366,8 @@ else if (!dispatched && command === "help") {
     parseDraftCli([...forwardedVerboseArgs, "--help"], "msgmon draft")
   } else if (subhelp === "workspace") {
     parseWorkspaceCli([...forwardedVerboseArgs, "--help"], "msgmon workspace")
+  } else if (subhelp === "client") {
+    parseClientCli([...forwardedVerboseArgs, "--help"], "msgmon client")
   } else if (subhelp === "sync") {
     parseSyncCli([...forwardedVerboseArgs, "--help"], "msgmon sync")
   } else if (subhelp === "session") {

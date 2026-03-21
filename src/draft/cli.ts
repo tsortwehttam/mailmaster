@@ -3,6 +3,7 @@ import path from "node:path"
 import yargs from "yargs"
 import type { Argv } from "yargs"
 import { DEFAULT_ACCOUNT } from "../CliConfig"
+import { DEFAULT_WORKSPACE_ID } from "../defaults"
 import { generateDraftId, saveDraft, loadDraft, listDrafts, deleteDraft } from "./store"
 import { sendDraft } from "./send"
 import type { Draft } from "./schema"
@@ -41,8 +42,8 @@ export let configureDraftCli = (cli: Argv) =>
           })
           .option("workspace", {
             type: "string",
-            demandOption: true,
-            describe: "Workspace id owning this draft",
+            default: DEFAULT_WORKSPACE_ID,
+            describe: "Internal workspace id owning this draft",
           })
           .option("account", {
             type: "string",
@@ -154,8 +155,8 @@ export let configureDraftCli = (cli: Argv) =>
           })
           .option("workspace", {
             type: "string",
-            demandOption: true,
-            describe: "Workspace id",
+            default: DEFAULT_WORKSPACE_ID,
+            describe: "Internal workspace id",
           })
           .option("platform", {
             type: "string",
@@ -186,7 +187,7 @@ export let configureDraftCli = (cli: Argv) =>
       "Show a draft by ID (prefix match)",
       y => y
         .positional("id", { type: "string", demandOption: true, describe: "Draft ID or prefix" })
-        .option("workspace", { type: "string", demandOption: true, describe: "Workspace id" }),
+        .option("workspace", { type: "string", default: DEFAULT_WORKSPACE_ID, describe: "Internal workspace id" }),
       async argv => {
         let draft = resolveDraft(argv.workspace, argv.id!)
         console.log(JSON.stringify(draft, null, 2))
@@ -198,7 +199,7 @@ export let configureDraftCli = (cli: Argv) =>
       y =>
         y
           .positional("id", { type: "string", demandOption: true, describe: "Draft ID or prefix" })
-          .option("workspace", { type: "string", demandOption: true, describe: "Workspace id" })
+          .option("workspace", { type: "string", default: DEFAULT_WORKSPACE_ID, describe: "Internal workspace id" })
           .option("label", { type: "string", describe: "Label or note" })
           .option("to", { type: "string", describe: "Recipient (gmail)" })
           .option("cc", { type: "array", string: true, coerce: normalizeMultiValue, describe: "CC (gmail)" })
@@ -252,7 +253,7 @@ export let configureDraftCli = (cli: Argv) =>
       y =>
         y
           .positional("id", { type: "string", demandOption: true, describe: "Draft ID or prefix" })
-          .option("workspace", { type: "string", demandOption: true, describe: "Workspace id" })
+          .option("workspace", { type: "string", default: DEFAULT_WORKSPACE_ID, describe: "Internal workspace id" })
           .option("yes", {
             type: "boolean",
             default: false,
@@ -276,7 +277,7 @@ export let configureDraftCli = (cli: Argv) =>
       "Delete a draft",
       y => y
         .positional("id", { type: "string", demandOption: true, describe: "Draft ID or prefix" })
-        .option("workspace", { type: "string", demandOption: true, describe: "Workspace id" }),
+        .option("workspace", { type: "string", default: DEFAULT_WORKSPACE_ID, describe: "Internal workspace id" }),
       async argv => {
         let draft = resolveDraft(argv.workspace, argv.id!)
         deleteDraft(argv.workspace, draft.id)

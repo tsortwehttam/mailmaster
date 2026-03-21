@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import path from "node:path"
 import readline from "node:readline/promises"
 import {
   resolveCredentialsPath,
@@ -9,6 +10,7 @@ import {
   TOKEN_FILE_EXTENSION,
   GMAIL_SCOPES,
   PWD_CONFIG_DIR,
+  currentWorkspaceDir,
 } from "../CliConfig"
 import { inferWorkspaceAccounts } from "../workspace/accounts"
 import { initWorkspace, loadWorkspaceConfig, listWorkspaceIds } from "../workspace/store"
@@ -374,7 +376,7 @@ let setupWorkspace = async (workspaceId: string, slackChannels?: string[]): Prom
   let existing = listWorkspaceIds()
 
   if (existing.includes(workspaceId)) {
-    ok(`Workspace "${workspaceId}" already exists.`)
+    ok(`Workspace already exists in ${process.cwd()}.`)
     try {
       let config = loadWorkspaceConfig(workspaceId)
       info(`Accounts: ${config.accounts.join(", ")}`)
@@ -396,7 +398,7 @@ let setupWorkspace = async (workspaceId: string, slackChannels?: string[]): Prom
 
   try {
     let result = initWorkspace(workspaceId, { accounts, slackChannels })
-    ok(`Created workspace "${workspaceId}" at ${result.path}`)
+    ok(`Created workspace at ${result.path}`)
     info(`Accounts: ${result.config.accounts.join(", ")}`)
     info(`Query: ${result.config.query}`)
     return true
@@ -525,7 +527,7 @@ export let runSetup = async (options: { workspace?: string }) => {
     }
 
     // Step 5: Workspace
-    step(5, `Workspace "${workspaceId}"`)
+    step(5, "Workspace")
     let hasWorkspace = await setupWorkspace(workspaceId, slackChannels)
     if (!hasWorkspace) {
       console.log("Setup could not create workspace. Fix the issues above and re-run.")
@@ -555,10 +557,11 @@ export let runSetup = async (options: { workspace?: string }) => {
     }
 
     // Done — print instructions
+    let workspaceDir = currentWorkspaceDir()
     console.log("Setup complete! To start, run in two terminals:")
-    console.log(`  msgmon serve`)
-    console.log(`  msgmon session start --workspace=${workspaceId} --agent-command='codex .'`)
-    console.log("Auth token is auto-generated in .msgmon/serve.json and read by session.")
+    console.log(`  msgmon serve ${JSON.stringify(workspaceDir)}`)
+    console.log(`  mkdir -p /tmp/agent-sandbox && cd /tmp/agent-sandbox && msgmon client start --server=http://127.0.0.1:3271 --agent-command='codex .'`)
+    console.log(`The workspace's local server config is stored under ${JSON.stringify(path.resolve(workspaceDir, ".msgmon", "serve.json"))}.`)
   } finally {
     rl.close()
   }

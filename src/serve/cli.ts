@@ -1,7 +1,10 @@
 import yargs from "yargs"
 import type { Argv } from "yargs"
+import fs from "node:fs"
+import path from "node:path"
 import { startServer, type Capability, type TokenSpec } from "./server"
 import { generateServeToken, saveServeLocalConfig } from "./localConfig"
+import { setWorkspaceDir } from "../CliConfig"
 
 let normalizeMultiValue = (value: unknown) => {
   if (value == null) return []
@@ -24,7 +27,11 @@ let parseScopedToken = (value: string): TokenSpec => {
 
 export let configureServeCli = (cli: Argv) =>
   cli
-    .usage("Usage: $0 [options]")
+    .usage("Usage: $0 [dir] [options]")
+    .positional("dir", {
+      type: "string",
+      describe: "Workspace directory to serve (defaults to current directory)",
+    })
     .option("port", {
       type: "number",
       default: 3271,
@@ -148,6 +155,9 @@ export let configureServeCli = (cli: Argv) =>
 
 export let parseServeCli = async (args: string[], scriptName = "msgmon serve") => {
   let argv = await configureServeCli(yargs(args).scriptName(scriptName)).parseAsync()
+  let dir = path.resolve(argv.dir ?? ".")
+  fs.mkdirSync(dir, { recursive: true })
+  setWorkspaceDir(dir)
   let generatedToken: string | undefined
   let tokens: TokenSpec[] = [
     ...(argv.token as string[]).map(token => ({ token, capabilities: ALL_CAPABILITIES })),

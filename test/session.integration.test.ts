@@ -8,12 +8,14 @@ let tmpDir: string
 let prevCwd: string
 let serverModule: typeof import("../src/serve/server")
 let sessionClient: typeof import("../src/session/client")
+let cliConfig: typeof import("../src/CliConfig")
 
 before(async () => {
   prevCwd = process.cwd()
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msgmon-session-integration-"))
   fs.symlinkSync(path.join(prevCwd, "node_modules"), path.join(tmpDir, "node_modules"), "dir")
   process.chdir(tmpDir)
+  cliConfig = await import("../src/CliConfig")
   serverModule = await import("../src/serve/server")
   sessionClient = await import("../src/session/client")
 })
@@ -25,6 +27,11 @@ after(() => {
 
 describe("session sync integration", () => {
   it("exposes discovery endpoints and syncs a local mirror against serve", async () => {
+    let serverDir = path.join(tmpDir, "server-workspace")
+    let clientDir = path.join(tmpDir, "client-mirror")
+    fs.mkdirSync(serverDir, { recursive: true })
+    cliConfig.setWorkspaceDir(serverDir)
+
     let server = serverModule.createServer({
       host: "127.0.0.1",
       port: 0,
@@ -54,7 +61,7 @@ describe("session sync integration", () => {
           "Content-Type": "application/json",
           "X-Auth-Token": "writer",
         },
-        body: JSON.stringify({ workspaceId: "agent-demo", accounts: ["default"], query: "is:unread" }),
+        body: JSON.stringify({ accounts: ["default"], query: "is:unread" }),
       })
       assert.equal(bootstrap.status, 200)
 
@@ -69,23 +76,22 @@ describe("session sync integration", () => {
       let manifestPayload = await manifestResponse.json() as { ok: boolean; data: { auth: { tokenCapabilities: string[] } } }
       assert.deepEqual(manifestPayload.data.auth.tokenCapabilities, ["read", "workspace_read"])
 
-      let localDir = sessionClient.defaultSessionDir("agent-demo")
       let pulled = await sessionClient.syncPull({
         serverUrl,
         token: "reader",
-        workspaceId: "agent-demo",
+        dir: clientDir,
       })
-      assert.equal(pulled.workspaceId, "agent-demo")
-      assert.ok(fs.existsSync(path.join(localDir, "status.md")))
-      assert.ok(fs.existsSync(path.join(localDir, ".msgmon-session", "session.json")))
+      assert.equal(pulled.workspaceId, "default")
+      assert.ok(fs.existsSync(path.join(clientDir, "status.md")))
+      assert.ok(fs.existsSync(path.join(clientDir, ".msgmon-session", "session.json")))
 
-      fs.writeFileSync(path.join(localDir, "status.md"), "# Status\n\nLocal update.\n")
+      fs.writeFileSync(path.join(clientDir, "status.md"), "# Status\n\nLocal update.\n")
 
       await assert.rejects(
         sessionClient.syncPull({
           serverUrl,
           token: "reader",
-          workspaceId: "agent-demo",
+          dir: clientDir,
         }),
         /Local writable files have changed/,
       )
@@ -93,7 +99,7 @@ describe("session sync integration", () => {
       let pushed = await sessionClient.syncPush({
         serverUrl,
         token: "writer",
-        workspaceId: "agent-demo",
+        dir: clientDir,
       })
       assert.equal(pushed.pushed, true)
 
@@ -103,7 +109,7 @@ describe("session sync integration", () => {
           "Content-Type": "application/json",
           "X-Auth-Token": "reader",
         },
-        body: JSON.stringify({ workspaceId: "agent-demo" }),
+        body: JSON.stringify({}),
       })
       assert.equal(exported.status, 200)
       let exportedPayload = await exported.json() as { ok: boolean; data: { files: Array<{ path: string; contentBase64: string }> } }
