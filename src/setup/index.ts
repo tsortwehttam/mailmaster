@@ -223,7 +223,7 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
     info("Starting Slack OAuth flow...")
     try {
       let { parseAuthCli } = await import("../../platforms/slack/auth")
-      await parseAuthCli(["--mode=oauth", `--account=${accountName}`], "msgmon slack auth")
+      await parseAuthCli(["--mode=oauth", `--account=${accountName}`], "msgmon slack auth", rl)
       ok("Slack OAuth complete.")
       return true
     } catch (err) {

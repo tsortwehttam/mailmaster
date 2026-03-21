@@ -85,7 +85,7 @@ let parseCode = (input: string): string | null => {
   return null
 }
 
-let authOAuth = async (account: string, verbose = false) => {
+let authOAuth = async (account: string, verbose = false, externalRl?: readline.Interface) => {
   let credentialsPath = resolveCredentialsPath("slack")
   verboseLog(verbose, "reading credentials", { credentialsPath })
 
@@ -107,7 +107,8 @@ let authOAuth = async (account: string, verbose = false) => {
     `&user_scope=${USER_SCOPES}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}` +
     `&state=${state}`
 
-  let rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  let ownRl = !externalRl
+  let rl = externalRl ?? readline.createInterface({ input: process.stdin, output: process.stdout })
 
   console.log(`Add this Redirect URL to your Slack app (OAuth & Permissions > Redirect URLs):`)
   console.log(OAUTH_REDIRECT_URI)
@@ -119,7 +120,7 @@ let authOAuth = async (account: string, verbose = false) => {
   console.log("After authorizing, you'll see a page with a code. Paste it here.")
 
   let input = await rl.question("Paste URL or code: ")
-  rl.close()
+  if (ownRl) rl.close()
 
   let code = parseCode(input)
   if (!code) throw new Error("Could not find an authorization code in that input. Try again.")
@@ -211,11 +212,11 @@ export let configureAuthCli = (cli: Argv) =>
     .strict()
     .help()
 
-export let parseAuthCli = async (args: string[], scriptName = "slack auth") => {
+export let parseAuthCli = async (args: string[], scriptName = "slack auth", rl?: readline.Interface) => {
   let argv = await configureAuthCli(yargs(args).scriptName(scriptName)).parseAsync()
 
   if (argv.mode === "oauth") {
-    await authOAuth(argv.account, argv.verbose)
+    await authOAuth(argv.account, argv.verbose, rl)
   } else {
     let token = argv.token
     if (!token) {
