@@ -370,7 +370,7 @@ export let runSetup = async (options: { workspace?: string }) => {
     }
 
     // Step 3: Slack (optional)
-    step(3, "Slack (optional)")
+    step(3, "Slack")
     await checkSlack()
 
     // Check we have at least one account
