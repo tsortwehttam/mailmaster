@@ -126,19 +126,15 @@ let listGmailTokens = (): string[] => {
   return Array.from(accounts).sort()
 }
 
-let checkGmailTokens = async (): Promise<boolean> => {
-  let existing = listGmailTokens()
-
-  if (existing.length > 0) {
-    ok(`Gmail account(s) already authorized: ${existing.join(", ")}`)
-    let addMore = await confirm("Add another Gmail account?", false)
-    if (!addMore) return true
-  } else {
-    info("No Gmail tokens found. Let's authorize your first account.")
-  }
-
+let authorizeOneGmailAccount = async (): Promise<boolean> => {
   let accountName = await prompt("  Account name (e.g. personal, work) [default]: ")
   if (!accountName) accountName = "default"
+
+  let existing = listGmailTokens()
+  if (existing.includes(accountName)) {
+    ok(`Account "${accountName}" is already authorized.`)
+    return true
+  }
 
   info(`Starting OAuth flow for account "${accountName}"...`)
   info("A browser window will open. Sign in and grant access.\n")
@@ -161,6 +157,25 @@ let checkGmailTokens = async (): Promise<boolean> => {
   }
 }
 
+let checkGmailTokens = async (): Promise<boolean> => {
+  let existing = listGmailTokens()
+
+  if (existing.length > 0) {
+    ok(`Gmail account(s) already authorized: ${existing.join(", ")}`)
+  } else {
+    info("No Gmail tokens found. Let's authorize your first account.")
+    let success = await authorizeOneGmailAccount()
+    if (!success) return false
+  }
+
+  // Loop to add more accounts
+  while (await confirm("Add another Gmail account?", false)) {
+    await authorizeOneGmailAccount()
+  }
+
+  return listGmailTokens().length > 0
+}
+
 // ---------------------------------------------------------------------------
 // Slack setup (optional)
 // ---------------------------------------------------------------------------
@@ -179,21 +194,15 @@ let listSlackTokens = (): string[] => {
   return Array.from(accounts).sort()
 }
 
-let checkSlack = async (): Promise<boolean> => {
-  let existing = listSlackTokens()
-  if (existing.length > 0) {
-    ok(`Slack account(s) already authorized: ${existing.join(", ")}`)
-    return true
-  }
-
-  let wantSlack = await confirm("Set up Slack integration?", false)
-  if (!wantSlack) {
-    skip("Skipping Slack setup.")
-    return true
-  }
-
+let authorizeOneSlackAccount = async (): Promise<boolean> => {
   let accountName = await prompt("  Slack account name [default]: ")
   if (!accountName) accountName = "default"
+
+  let existing = listSlackTokens()
+  if (existing.includes(accountName)) {
+    ok(`Slack account "${accountName}" is already authorized.`)
+    return true
+  }
 
   console.log(`
   Choose auth mode:
@@ -249,6 +258,30 @@ let checkSlack = async (): Promise<boolean> => {
     fail(`Slack auth failed: ${err instanceof Error ? err.message : String(err)}`)
     return false
   }
+}
+
+let checkSlack = async (): Promise<boolean> => {
+  let existing = listSlackTokens()
+  if (existing.length > 0) {
+    ok(`Slack account(s) already authorized: ${existing.join(", ")}`)
+  }
+
+  let hasAny = existing.length > 0
+  let promptMsg = hasAny ? "Add another Slack account?" : "Set up Slack integration?"
+
+  if (!await confirm(promptMsg, false)) {
+    if (!hasAny) skip("Skipping Slack setup.")
+    return true
+  }
+
+  await authorizeOneSlackAccount()
+
+  // Loop to add more
+  while (await confirm("Add another Slack account?", false)) {
+    await authorizeOneSlackAccount()
+  }
+
+  return true
 }
 
 // ---------------------------------------------------------------------------
