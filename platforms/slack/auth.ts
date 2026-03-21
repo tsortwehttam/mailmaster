@@ -48,6 +48,7 @@ let authBot = async (account: string, token: string, verbose = false) => {
 // ---------------------------------------------------------------------------
 
 let SLACK_OAUTH_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
+let OAUTH_REDIRECT_URI = "https://tsortwehttam.github.io/msgmon/oauth"
 
 export let BOT_SCOPES = [
   "channels:history",
@@ -103,13 +104,13 @@ let authOAuth = async (account: string, verbose = false) => {
 
   let authUrl =
     `${SLACK_OAUTH_AUTHORIZE_URL}?client_id=${clientId}&scope=${BOT_SCOPES}` +
-    `&user_scope=${USER_SCOPES}&state=${state}`
+    `&user_scope=${USER_SCOPES}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}` +
+    `&state=${state}`
 
   openBrowser(authUrl)
   console.log("Opening browser... if it didn't open, visit:")
   console.log(authUrl)
-  console.log("After authorizing, Slack will redirect to a URL that fails to load.")
-  console.log("Copy the full URL from your browser's address bar and paste it here.")
+  console.log("After authorizing, you'll see a page with a code. Paste it here.")
 
   let rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   let input = await rl.question("Paste URL or code: ")
@@ -135,6 +136,7 @@ let authOAuth = async (account: string, verbose = false) => {
     client_id: clientId,
     client_secret: clientSecret,
     code,
+    redirect_uri: OAUTH_REDIRECT_URI,
   })
 
   if (!oauthResponse.ok) {

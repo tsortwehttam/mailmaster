@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>msgmon — OAuth Code</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: monospace; max-width: 480px; margin: 60px auto; padding: 0 20px; color: #222; }
+h1 { font-size: 16px; margin-bottom: 16px; }
+p { font-size: 14px; line-height: 1.5; margin-bottom: 12px; }
+code { background: #f4f4f4; border: 1px solid #ddd; padding: 8px 12px; display: block; word-break: break-all; font-size: 14px; cursor: pointer; }
+.ok { color: #227722; }
+.err { color: #cc3333; }
+.note { font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+
+<h1>msgmon OAuth</h1>
+
+<div id="content"></div>
+
+<script>
+// This is the entire script. It reads the "code" parameter
+// from the URL and displays it. Nothing is sent anywhere.
+
+var params = new URLSearchParams(window.location.search);
+var code = params.get("code");
+var error = params.get("error");
+var el = document.getElementById("content");
+
+if (error) {
+  el.innerHTML = '<p class="err">Authorization failed: ' + error + '</p>'
+    + '<p>Close this tab and try again.</p>';
+} else if (code) {
+  el.innerHTML = '<p class="ok">Copy this code and paste it into your terminal:</p>'
+    + '<code id="code" onclick="copy()">' + code + '</code>'
+    + '<p class="note" id="hint">Click the code to copy it.</p>';
+} else {
+  el.innerHTML = '<p class="err">No authorization code found in the URL.</p>'
+    + '<p>This page is the OAuth callback for msgmon. '
+    + 'Start the auth flow with <code>msgmon setup</code>.</p>';
+}
+
+function copy() {
+  navigator.clipboard.writeText(code);
+  document.getElementById("hint").textContent = "Copied!";
+}
+</script>
+
+</body>
+</html>
