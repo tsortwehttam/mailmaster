@@ -27,10 +27,38 @@ export let configureSetupCli = (cli: Argv) =>
         .option("until", {
           type: "string",
           describe: "Upper time bound for the initial pull as ISO timestamp or YYYY-MM-DD",
+        })
+        .option("yes", {
+          alias: "y",
+          type: "boolean",
+          default: false,
+          describe: "Auto-confirm all prompts for non-interactive use",
+        })
+        .option("gmail-accounts", {
+          type: "string",
+          describe: "Gmail accounts to use: \"all\" for existing tokens, or comma-separated emails",
+        })
+        .option("slack-accounts", {
+          type: "string",
+          describe: "Slack accounts to set up: \"all\" for existing tokens, or comma-separated names",
+        })
+        .option("slack-token", {
+          type: "string",
+          describe: "Slack bot token to save (single account only)",
+        })
+        .option("slack-mode", {
+          type: "string",
+          choices: ["bot", "oauth"],
+          default: "bot",
+          describe: "Slack auth mode",
+        })
+        .option("slack-channels", {
+          type: "string",
+          describe: "Slack channels to monitor: \"all\" or comma-separated like \"#general,#eng\"",
         }))
     .example("$0", "Interactive guided setup in the current directory")
-    .example("$0 ./assistant-workspace", "Create the directory if needed and set it up as a server workspace")
-    .example("$0 ./assistant-workspace --since=2026-03-15", "Set up a server workspace with an explicit initial lower time bound")
+    .example("$0 ./workspace --since=2026-03-15", "Set up with an explicit initial lower time bound")
+    .example("$0 -y --gmail-accounts=all", "Non-interactive setup using existing tokens")
     .epilog(
       [
         "Walks through the full setup process interactively:",
@@ -42,6 +70,7 @@ export let configureSetupCli = (cli: Argv) =>
         "  6. Print the commands to start the server and agent",
         "",
         "Safe to re-run — skips steps that are already done.",
+        "Pass -y with account flags for fully non-interactive operation.",
       ].join("\n"),
     )
     .demandCommand(0)
@@ -57,5 +86,11 @@ export let parseSetupCli = async (args: string[], scriptName = "msgmon setup") =
     workspace: argv.workspace as string | undefined,
     since: argv.since as string | undefined,
     until: argv.until as string | undefined,
+    yes: argv.yes as boolean,
+    gmailAccounts: argv.gmailAccounts as string | undefined,
+    slackAccounts: argv.slackAccounts as string | undefined,
+    slackToken: argv.slackToken as string | undefined,
+    slackMode: argv.slackMode as string | undefined,
+    slackChannels: argv.slackChannels as string | undefined,
   })
 }

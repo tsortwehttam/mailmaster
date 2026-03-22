@@ -18,17 +18,36 @@ import { initWorkspace, loadWorkspaceConfig, listWorkspaceIds } from "../workspa
 import { pullWorkspaceMessages } from "../workspace/runtime"
 
 // ---------------------------------------------------------------------------
+// Options type
+// ---------------------------------------------------------------------------
+
+export type SetupOptions = {
+  workspace?: string
+  since?: string
+  until?: string
+  yes?: boolean
+  gmailAccounts?: string
+  slackAccounts?: string
+  slackToken?: string
+  slackMode?: string
+  slackChannels?: string
+}
+
+// ---------------------------------------------------------------------------
 // Interactive helpers
 // ---------------------------------------------------------------------------
 
-let rl: readline.Interface
+let rl: readline.Interface | undefined
+let autoMode = false
 
 let prompt = async (question: string): Promise<string> => {
-  let answer = await rl.question(question)
+  if (autoMode) return ""
+  let answer = await rl!.question(question)
   return answer.trim()
 }
 
 let confirm = async (question: string, defaultYes = true): Promise<boolean> => {
+  if (autoMode) return defaultYes
   let hint = defaultYes ? "[Y/n]" : "[y/N]"
   let answer = await prompt(`${question} ${hint} `)
   if (answer === "") return defaultYes
@@ -36,6 +55,7 @@ let confirm = async (question: string, defaultYes = true): Promise<boolean> => {
 }
 
 let waitForEnter = async (message = "Press Enter to continue...") => {
+  if (autoMode) return
   await prompt(message)
 }
 
@@ -72,6 +92,8 @@ let checkGmailCredentials = async (): Promise<boolean> => {
   } else {
     fail("No Gmail credentials.json found.")
   }
+
+  if (autoMode) return false
 
   console.log(`To create Gmail OAuth credentials:
 1. Go to https://console.cloud.google.com/ — create/select a project
@@ -157,9 +179,42 @@ let authorizeOneGmailAccount = async (): Promise<boolean> => {
   }
 }
 
-let checkGmailTokens = async (): Promise<boolean> => {
+let checkGmailTokens = async (opts: SetupOptions): Promise<boolean> => {
   let existing = listGmailTokens()
+  let gmailAccounts = opts.gmailAccounts
 
+  // Auto mode with explicit account list
+  if (autoMode && gmailAccounts) {
+    if (gmailAccounts === "all") {
+      if (existing.length > 0) {
+        ok(`Gmail account(s) already authorized: ${existing.join(", ")}`)
+        return true
+      }
+      fail("--gmail-accounts=all but no existing Gmail tokens found.")
+      return false
+    }
+    // Specific accounts requested
+    let requested = gmailAccounts.split(",").map(s => s.trim()).filter(Boolean)
+    let missing = requested.filter(a => !existing.includes(a))
+    if (missing.length > 0) {
+      fail(`Gmail tokens not found for: ${missing.join(", ")}. Run interactive setup or authorize these accounts first.`)
+      return false
+    }
+    ok(`Gmail account(s) already authorized: ${requested.join(", ")}`)
+    return true
+  }
+
+  // Auto mode without explicit accounts — just use what exists
+  if (autoMode) {
+    if (existing.length > 0) {
+      ok(`Gmail account(s) already authorized: ${existing.join(", ")}`)
+      return true
+    }
+    fail("No Gmail tokens found. Run interactive setup to authorize accounts.")
+    return false
+  }
+
+  // Interactive mode
   if (existing.length > 0) {
     ok(`Gmail account(s) already authorized: ${existing.join(", ")}`)
   } else {
@@ -194,9 +249,11 @@ let listSlackTokens = (): string[] => {
   return Array.from(accounts).sort()
 }
 
-let authorizeOneSlackAccount = async (): Promise<boolean> => {
-  let accountName = await prompt("Slack account name [default]: ")
-  if (!accountName) accountName = "default"
+let authorizeOneSlackAccount = async (accountName?: string, mode?: string, token?: string): Promise<boolean> => {
+  if (!accountName) {
+    accountName = await prompt("Slack account name [default]: ")
+    if (!accountName) accountName = "default"
+  }
 
   let existing = listSlackTokens()
   if (existing.includes(accountName)) {
@@ -204,16 +261,23 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
     return true
   }
 
-  console.log("Auth mode:")
-  console.log("1) Bot token — paste a token (recommended, simplest)")
-  console.log("2) OAuth — browser flow (needed for search and send-as-user)")
-  let mode = await prompt("Mode [1]: ")
+  if (!mode) {
+    console.log("Auth mode:")
+    console.log("1) Bot token — paste a token (recommended, simplest)")
+    console.log("2) OAuth — browser flow (needed for search and send-as-user)")
+    mode = await prompt("Mode [1]: ")
+    mode = mode === "2" ? "oauth" : "bot"
+  }
 
-  if (mode === "2") {
+  if (mode === "oauth") {
     // OAuth mode
     let credPath = resolveCredentialsPath("slack")
     let hasCredentials = fs.existsSync(credPath)
     if (!hasCredentials) {
+      if (autoMode) {
+        fail(`Slack credentials not found at ${credPath}. Cannot run OAuth in non-interactive mode without credentials.`)
+        return false
+      }
       let { BOT_SCOPES, USER_SCOPES } = await import("../../platforms/slack/auth")
       console.log("To create a Slack app for OAuth:")
       console.log("1. Go to https://api.slack.com/apps > Create New App > From scratch")
@@ -244,12 +308,18 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
   }
 
   // Bot token mode
-  console.log("To get a bot token:")
-  console.log("1. Go to https://api.slack.com/apps > Create New App > From scratch")
-  console.log("2. Name it anything (e.g. \"msgmon\") and pick your workspace")
-  console.log("3. Under OAuth & Permissions, add Bot Token Scopes: channels:history, channels:read, groups:history, groups:read, im:history, mpim:history, users:read, chat:write")
-  console.log("4. Click Install to Workspace, then copy the Bot User OAuth Token")
-  let token = await prompt("Paste your Slack bot token (xoxb-...): ")
+  if (!token) {
+    if (autoMode) {
+      fail(`No --slack-token provided for account "${accountName}". Cannot prompt in non-interactive mode.`)
+      return false
+    }
+    console.log("To get a bot token:")
+    console.log("1. Go to https://api.slack.com/apps > Create New App > From scratch")
+    console.log("2. Name it anything (e.g. \"msgmon\") and pick your workspace")
+    console.log("3. Under OAuth & Permissions, add Bot Token Scopes: channels:history, channels:read, groups:history, groups:read, im:history, mpim:history, users:read, chat:write")
+    console.log("4. Click Install to Workspace, then copy the Bot User OAuth Token")
+    token = await prompt("Paste your Slack bot token (xoxb-...): ")
+  }
   if (!token) {
     fail("No token provided.")
     return false
@@ -266,12 +336,37 @@ let authorizeOneSlackAccount = async (): Promise<boolean> => {
   }
 }
 
-let checkSlack = async (): Promise<boolean> => {
+let checkSlack = async (opts: SetupOptions): Promise<boolean> => {
   let existing = listSlackTokens()
   if (existing.length > 0) {
     ok(`Slack account(s) already authorized: ${existing.join(", ")}`)
   }
 
+  let slackAccounts = opts.slackAccounts
+
+  // Auto mode with explicit account list
+  if (autoMode && slackAccounts) {
+    if (slackAccounts === "all") {
+      if (existing.length > 0) return true
+      fail("--slack-accounts=all but no existing Slack tokens found.")
+      return false
+    }
+    // Specific accounts requested
+    let requested = slackAccounts.split(",").map(s => s.trim()).filter(Boolean)
+    for (let name of requested) {
+      if (existing.includes(name)) continue
+      await authorizeOneSlackAccount(name, opts.slackMode ?? "bot", opts.slackToken)
+    }
+    return true
+  }
+
+  // Auto mode without explicit accounts — skip Slack setup
+  if (autoMode) {
+    if (existing.length === 0) skip("Skipping Slack setup (no --slack-accounts flag).")
+    return true
+  }
+
+  // Interactive mode
   let hasAny = existing.length > 0
   let promptMsg = hasAny ? "Add another Slack account?" : "Set up Slack integration?"
 
@@ -296,9 +391,20 @@ let checkSlack = async (): Promise<boolean> => {
 
 let normalizeSlackChannelName = (value: string) => value.trim().replace(/^#/, "").toLowerCase()
 
-let pickSlackChannels = async (): Promise<string[]> => {
+let pickSlackChannels = async (opts: SetupOptions): Promise<string[]> => {
   let slackAccounts = listSlackTokens()
   if (slackAccounts.length === 0) return []
+
+  let slackChannelsFlag = opts.slackChannels
+
+  // Auto mode with explicit channel list (no API call needed)
+  if (autoMode && slackChannelsFlag && slackChannelsFlag !== "all") {
+    let channels = slackChannelsFlag.split(",").map(s => {
+      let name = s.trim()
+      return name.startsWith("#") ? name : `#${name}`
+    }).filter(s => s.length > 1)
+    return channels
+  }
 
   let accountName = slackAccounts[0]
   try {
@@ -343,6 +449,16 @@ let pickSlackChannels = async (): Promise<string[]> => {
     console.log(`Found ${channels.length} channels: ${names.join(", ")}`)
     if (skippedUnreadable > 0) {
       info(`Skipped ${skippedUnreadable} channel(s) the bot is not a member of.`)
+    }
+
+    // Auto mode with "all" — return everything
+    if (autoMode && slackChannelsFlag === "all") {
+      return names
+    }
+
+    // Auto mode without channel flag — return all
+    if (autoMode) {
+      return names
     }
 
     if (await confirm("Monitor all of these channels?", true)) {
@@ -466,7 +582,9 @@ let pullMessagesForSetup = async (workspaceId: string, params: { since?: string;
     if (err.includes("Precondition check failed") || err.includes("invalid_grant")) {
       fail(`${err}`)
       console.log("Your token may have expired or been revoked.")
-      if (await confirm("Re-authorize Gmail now?", true)) {
+      if (autoMode) {
+        fail("Cannot re-authorize in non-interactive mode. Re-run interactive setup or refresh tokens manually.")
+      } else if (await confirm("Re-authorize Gmail now?", true)) {
         let success = await authorizeOneGmailAccount()
         if (success) return pullMessagesForSetup(workspaceId, params)
       }
@@ -485,26 +603,33 @@ let pullMessagesForSetup = async (workspaceId: string, params: { since?: string;
 // Main setup flow
 // ---------------------------------------------------------------------------
 
-export let runSetup = async (options: { workspace?: string; since?: string; until?: string }) => {
+export let runSetup = async (options: SetupOptions) => {
   let workspaceId = options.workspace ?? "default"
+  autoMode = !!options.yes
 
-  rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
+  if (!autoMode) {
+    rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    })
+  }
 
   try {
-    console.log("msgmon setup — interactive walkthrough")
+    console.log(autoMode ? "msgmon setup — non-interactive mode" : "msgmon setup — interactive walkthrough")
 
     // Step 1: Gmail credentials
     step(1, "Gmail Credentials")
 
     let hasCredentials = await checkGmailCredentials()
     if (!hasCredentials) {
-      let cont = await confirm("Continue setup without Gmail credentials?", false)
-      if (!cont) {
-        console.log("Setup aborted. Re-run `msgmon setup` when ready.")
-        return
+      if (autoMode) {
+        info("Continuing without Gmail credentials.")
+      } else {
+        let cont = await confirm("Continue setup without Gmail credentials?", false)
+        if (!cont) {
+          console.log("Setup aborted. Re-run `msgmon setup` when ready.")
+          return
+        }
       }
     }
 
@@ -512,7 +637,7 @@ export let runSetup = async (options: { workspace?: string; since?: string; unti
     let hasGmailToken = false
     if (hasCredentials) {
       step(2, "Gmail Authorization")
-      hasGmailToken = await checkGmailTokens()
+      hasGmailToken = await checkGmailTokens(options)
     } else {
       step(2, "Gmail Authorization")
       skip("Skipped (no credentials).")
@@ -520,7 +645,7 @@ export let runSetup = async (options: { workspace?: string; since?: string; unti
 
     // Step 3: Slack (optional)
     step(3, "Slack")
-    await checkSlack()
+    await checkSlack(options)
 
     // Check we have at least one account
     let allAccounts = inferWorkspaceAccounts()
@@ -536,7 +661,7 @@ export let runSetup = async (options: { workspace?: string; since?: string; unti
     let slackChannels: string[] | undefined
     if (allAccounts.some(a => a.startsWith("slack:"))) {
       step(4, "Slack Channels")
-      slackChannels = await pickSlackChannels()
+      slackChannels = await pickSlackChannels(options)
       if (slackChannels.length > 0) {
         ok(`Monitoring: ${slackChannels.join(", ")}`)
       } else {
@@ -559,10 +684,14 @@ export let runSetup = async (options: { workspace?: string; since?: string; unti
       until: options.until,
     })
     if (!pulled) {
-      let cont = await confirm("Continue anyway?", true)
-      if (!cont) {
-        console.log("Setup paused. Fix the issue and re-run `msgmon setup`.")
-        return
+      if (autoMode) {
+        info("Continuing despite pull errors.")
+      } else {
+        let cont = await confirm("Continue anyway?", true)
+        if (!cont) {
+          console.log("Setup paused. Fix the issue and re-run `msgmon setup`.")
+          return
+        }
       }
     }
 
@@ -573,6 +702,6 @@ export let runSetup = async (options: { workspace?: string; since?: string; unti
     console.log(`  msgmon client start --server=http://127.0.0.1:3271 --dir=/tmp/agent-sandbox --agent-command='codex .'`)
     console.log(`The server workspace's local server config is stored under ${JSON.stringify(path.resolve(workspaceDir, ".msgmon", "serve.json"))}.`)
   } finally {
-    rl.close()
+    rl?.close()
   }
 }
