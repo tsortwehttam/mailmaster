@@ -87,6 +87,7 @@ drafts/         — draft JSON files the agent may create or revise
 - Use the messaging proxy server API for privileged actions such as send, mark-read, archive, and other server-backed actions.
 - Prefer revising an existing draft over creating duplicate drafts.
 - Keep \`status.md\` concise, high-signal, and decision-useful.
+- If a \`README.md\` or \`instructions.md\` file is present in the workspace, read and follow those instructions as well.
 `
 
 let DEFAULT_STATUS = `# Status
