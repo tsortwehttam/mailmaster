@@ -65,17 +65,17 @@ describe("workspace store", () => {
     assert.equal(result.config.pullWindowDays, 14)
     assert.equal(result.path, dir)
     assert.ok(fs.existsSync(path.join(result.path, "workspace.json")))
-    assert.ok(fs.existsSync(path.join(result.path, "messages")))
+    assert.ok(fs.existsSync(path.join(result.path, "messages.jsonl")))
     assert.ok(fs.existsSync(path.join(result.path, ".msgmon", "state")))
 
     fs.writeFileSync(path.join(result.path, ".msgmon", "secret.txt"), "do not export")
-    fs.writeFileSync(path.join(result.path, "messages", "note.txt"), "history")
+    fs.writeFileSync(path.join(result.path, "messages.jsonl"), "{\"id\":\"a\"}\n")
 
     let snapshot = workspaceStore.exportWorkspaceSnapshot("alpha")
     let paths = snapshot.files.map(file => file.path)
     assert.ok(paths.includes("workspace.json"))
     assert.ok(paths.includes("status.md"))
-    assert.ok(paths.includes("messages/note.txt"))
+    assert.ok(paths.includes("messages.jsonl"))
     assert.ok(!paths.some(file => file.startsWith(".msgmon/")))
   })
 
@@ -95,7 +95,7 @@ describe("workspace store", () => {
     assert.match(fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /# Existing/)
     assert.ok(fs.existsSync(path.join(dir, "workspace.json")))
     assert.ok(fs.existsSync(path.join(dir, "status.md")))
-    assert.ok(fs.existsSync(path.join(dir, "messages")))
+    assert.ok(fs.existsSync(path.join(dir, "messages.jsonl")))
     assert.ok(fs.existsSync(path.join(dir, ".msgmon", "state")))
   })
 
@@ -160,7 +160,7 @@ describe("workspace store", () => {
     assert.match(status, /Bundled/)
   })
 
-  it("tracks a pull state path and can infer the latest pulled message timestamp", () => {
+  it("tracks a pull state path and can infer the latest pulled message timestamp", async () => {
     let dir = useDir("pull-state")
     let result = workspaceStore.initWorkspace("default", {
       accounts: ["default"],
@@ -174,22 +174,23 @@ describe("workspace store", () => {
     )
     assert.match(pullStatePath, /pull-[a-f0-9]{16}\.json$/)
 
-    fs.mkdirSync(path.join(dir, "messages"), { recursive: true })
-    fs.writeFileSync(path.join(dir, "messages", "2026-03-22T00-00-00-000Z_gmail_a.json"), JSON.stringify({
+    fs.writeFileSync(path.join(dir, "messages.jsonl"), [
+      JSON.stringify({
       id: "a",
       platform: "gmail",
       timestamp: "2026-03-22T00:00:00.000Z",
       platformMetadata: { platform: "gmail", messageId: "a" },
-    }) + "\n")
-    fs.writeFileSync(path.join(dir, "messages", "2026-03-22T00-05-00-000Z_gmail_b.json"), JSON.stringify({
+    }),
+      JSON.stringify({
       id: "b",
       platform: "gmail",
       timestamp: "2026-03-22T00:05:00.000Z",
       platformMetadata: { platform: "gmail", messageId: "b" },
-    }) + "\n")
+    }),
+    ].join("\n") + "\n")
 
     assert.equal(
-      workspaceRuntime.latestPulledMessageTimestamp("default"),
+      await workspaceRuntime.latestPulledMessageTimestamp("default"),
       "2026-03-22T00:05:00.000Z",
     )
   })

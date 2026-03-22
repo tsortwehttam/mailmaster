@@ -35,31 +35,15 @@ export let createNdjsonSink = (params: {
 }
 
 // ---------------------------------------------------------------------------
-// Dir sink — one JSON file per message
+// JSONL file sink — one JSON line per message appended to a file
 // ---------------------------------------------------------------------------
 
-let sanitizeFileName = (value: string) =>
-  value.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^_+/, "").slice(0, 200) || "file"
-
-let messageFileName = (msg: UnifiedMessage) => {
-  let stamp = msg.timestamp.replace(/[:.]/g, "-")
-  return `${stamp}_${sanitizeFileName(msg.platform)}_${sanitizeFileName(msg.id)}.json`
-}
-
-export let createJsonFileSink = (params: {
-  outDir: string
+export let createJsonlFileSink = (params: {
+  filePath: string
   saveAttachments?: boolean
   /** Called when attachment data is needed — platform adapter provides this */
   fetchAttachment?: (msg: UnifiedMessage, filename: string) => Promise<Buffer | undefined>
-}): Sink => {
-  fs.mkdirSync(params.outDir, { recursive: true })
-  return {
-    async write(msg) {
-      let filePath = path.resolve(params.outDir, messageFileName(msg))
-      fs.writeFileSync(filePath, JSON.stringify(msg, null, 2) + "\n")
-    },
-  }
-}
+}): Sink => createNdjsonSink({ filePath: params.filePath })
 
 // ---------------------------------------------------------------------------
 // Exec sink — run a shell command per message with env vars

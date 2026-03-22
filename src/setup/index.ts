@@ -447,7 +447,7 @@ let pullMessagesForSetup = async (workspaceId: string): Promise<boolean> => {
   })
 
   if (result.scanned > 0 || result.ingested > 0) {
-    ok(`${result.scanned} message(s) scanned, ${result.ingested} written to messages/ for ${result.since} to ${result.until}.`)
+    ok(`${result.scanned} message(s) scanned, ${result.ingested} written to messages.jsonl for ${result.since} to ${result.until}.`)
   }
 
   for (let err of result.errors) {

@@ -1,8 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
 import crypto from "node:crypto"
+import readline from "node:readline"
 import { prependConfigDir, LOCAL_CONFIG_DIRNAME } from "../CliConfig"
-import { createJsonFileSink } from "../ingest/sinks"
+import { createJsonlFileSink } from "../ingest/sinks"
 import { ingestOnce } from "../ingest/ingest"
 import { gmailSource, markGmailRead, fetchGmailAttachment } from "../../platforms/gmail/MailSource"
 import { slackSource, markSlackRead } from "../../platforms/slack/SlackSource"
@@ -91,8 +92,8 @@ export let buildWorkspacePullStatePath = (workspaceId: string, accounts: string[
 let attachmentFetcher = (accounts: string[]) =>
   async (msg: UnifiedMessage, filename: string) => fetchGmailAttachment(msg, filename, accounts[0] ?? "default")
 
-let resolveMessagesDir = (workspaceId: string) =>
-  path.resolve(workspaceRoot(workspaceId), "messages")
+let resolveMessagesPath = (workspaceId: string) =>
+  path.resolve(workspaceRoot(workspaceId), "messages.jsonl")
 
 let timestampMs = (value?: string) => {
   if (!value) return undefined
@@ -102,26 +103,34 @@ let timestampMs = (value?: string) => {
 }
 
 export let latestPulledMessageTimestamp = (workspaceId: string) => {
-  let dir = resolveMessagesDir(workspaceId)
-  if (!fs.existsSync(dir)) return undefined
+  let filePath = resolveMessagesPath(workspaceId)
+  if (!fs.existsSync(filePath)) return Promise.resolve(undefined)
 
-  let latest: string | undefined
-  for (let entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".json")) continue
-    try {
-      let raw = JSON.parse(fs.readFileSync(path.resolve(dir, entry.name), "utf8")) as { timestamp?: string }
-      let timestamp = raw.timestamp
-      if (!timestamp) continue
-      if (!latest || Date.parse(timestamp) > Date.parse(latest)) latest = timestamp
-    } catch {
-      continue
-    }
-  }
-  return latest
+  return new Promise<string | undefined>((resolve, reject) => {
+    let latest: string | undefined
+    let stream = fs.createReadStream(filePath, { encoding: "utf8" })
+    let lines = readline.createInterface({ input: stream, crlfDelay: Infinity })
+
+    lines.on("line", line => {
+      let trimmed = line.trim()
+      if (!trimmed) return
+      try {
+        let raw = JSON.parse(trimmed) as { timestamp?: string }
+        let timestamp = raw.timestamp
+        if (!timestamp) return
+        if (!latest || Date.parse(timestamp) > Date.parse(latest)) latest = timestamp
+      } catch {
+        return
+      }
+    })
+    lines.on("close", () => resolve(latest))
+    lines.on("error", reject)
+    stream.on("error", reject)
+  })
 }
 
-let defaultPullSince = (workspaceId: string, pullWindowDays: number) => {
-  let latest = latestPulledMessageTimestamp(workspaceId)
+let defaultPullSince = async (workspaceId: string, pullWindowDays: number) => {
+  let latest = await latestPulledMessageTimestamp(workspaceId)
   if (latest) return latest
   return new Date(Date.now() - pullWindowDays * 24 * 60 * 60 * 1000).toISOString()
 }
@@ -143,7 +152,7 @@ export let pullWorkspaceMessages = async (params: {
 }) => {
   let config = loadWorkspaceConfig(params.workspaceId)
   let root = workspaceRoot(config.id)
-  let messagesDir = resolveMessagesDir(config.id)
+  let messagesPath = resolveMessagesPath(config.id)
   let effectiveQuery = params.query ?? config.query
   let statePath = buildWorkspacePullStatePath(
     config.id,
@@ -155,11 +164,11 @@ export let pullWorkspaceMessages = async (params: {
   prependConfigDir(path.resolve(root, LOCAL_CONFIG_DIRNAME))
 
   if (params.clear) {
-    fs.rmSync(messagesDir, { recursive: true, force: true })
+    fs.rmSync(messagesPath, { force: true })
     fs.rmSync(statePath, { force: true })
   }
 
-  let effectiveSince = params.since ?? defaultPullSince(config.id, config.pullWindowDays)
+  let effectiveSince = params.since ?? await defaultPullSince(config.id, config.pullWindowDays)
   let effectiveUntil = params.until ?? defaultPullUntil()
   let sinceMs = timestampMs(effectiveSince)
   let untilMs = timestampMs(effectiveUntil)
@@ -167,8 +176,8 @@ export let pullWorkspaceMessages = async (params: {
     throw new Error(`Invalid pull range: since ${effectiveSince} is after until ${effectiveUntil}`)
   }
 
-  let sink = createJsonFileSink({
-    outDir: messagesDir,
+  let sink = createJsonlFileSink({
+    filePath: messagesPath,
     saveAttachments: params.saveAttachments,
     fetchAttachment: params.saveAttachments ? attachmentFetcher(config.accounts) : undefined,
   })

@@ -557,7 +557,7 @@ let routeCatalog = () => ([
   { method: "POST", path: "/api/workspace/export", auth: "workspace_read", purpose: "Export agent-safe workspace snapshot or bundle" },
   { method: "POST", path: "/api/workspace/bootstrap", auth: "workspace_write", purpose: "Create a server workspace" },
   { method: "POST", path: "/api/workspace/import", auth: "workspace_write", purpose: "Import a workspace bundle" },
-  { method: "POST", path: "/api/workspace/pull", auth: "ingest", purpose: "Pull messages into messages/" },
+  { method: "POST", path: "/api/workspace/pull", auth: "ingest", purpose: "Pull messages into messages.jsonl" },
   { method: "POST", path: "/api/workspace/push", auth: "workspace_write", purpose: "Push bounded writable file edits" },
   { method: "POST", path: "/api/workspace/actions", auth: "workspace_actions", purpose: "Apply privileged workspace actions" },
   { method: "POST", path: "/api/draft/compose", auth: "drafts", purpose: "Create a workspace-owned draft" },
@@ -609,7 +609,7 @@ let buildLlmsText = (opts: ServeOptions) => [
   "",
   "Recommended agent behavior:",
   "- Never send without explicit user approval.",
-  "- Treat workspace.json and messages/ as read-only.",
+  "- Treat workspace.json and messages.jsonl as read-only.",
   "- Use polling rather than assuming push transport.",
 ].join("\n")
 
@@ -630,11 +630,11 @@ let buildAgentManifest = (tokenSpec: TokenSpec) => ({
     importRoute: "/api/workspace/import",
     pullRoute: "/api/workspace/pull",
     writablePaths: ["AGENTS.md", "status.md", "drafts/**"],
-    readOnlyPaths: ["workspace.json", "messages/**"],
+    readOnlyPaths: ["workspace.json", "messages.jsonl"],
   },
   workflows: [
     "Pull a workspace snapshot into an isolated local directory.",
-    "Read messages/ and update status.md.",
+    "Read messages.jsonl and update status.md.",
     "Create or revise drafts under drafts/ as flat json files.",
     "Push bounded local changes back to the server.",
     "Ask for user approval before any send/archive/mark-read action.",

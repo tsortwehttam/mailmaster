@@ -92,7 +92,7 @@ export let configureServerCli = (cli: Argv) =>
     )
     .command(
       "pull [dir]",
-      "Pull messages into the server workspace messages/ directory",
+      "Pull messages into the server workspace messages.jsonl file",
       y =>
         withDir(y)
           .option("max-results", {
@@ -113,7 +113,7 @@ export let configureServerCli = (cli: Argv) =>
           .option("seed", {
             type: "boolean",
             default: false,
-            describe: "Record IDs in state without writing message files",
+            describe: "Record IDs in state without writing messages.jsonl entries",
           })
           .option("query", {
             type: "string",
@@ -136,7 +136,7 @@ export let configureServerCli = (cli: Argv) =>
           .option("clear", {
             type: "boolean",
             default: false,
-            describe: "Clear messages/ and reset pull state before pulling",
+            describe: "Clear messages.jsonl and reset pull state before pulling",
           })
           .option("verbose", {
             alias: "v",

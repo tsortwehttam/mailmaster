@@ -14,7 +14,7 @@ msgmon --help
 
 msgmon uses a server/client directory model:
 
-- A **server workspace** holds `messages/`, `drafts/`, `status.md`, `AGENTS.md`, and a hidden `.msgmon/` folder for secrets and state.
+- A **server workspace** holds `messages.jsonl`, `drafts/`, `status.md`, `AGENTS.md`, and a hidden `.msgmon/` folder for secrets and state.
 - A **client** directory receives an agent-safe mirror — no credentials exposed.
 
 ```bash
@@ -40,7 +40,7 @@ Typical recurring server-side pull:
 msgmon server pull ./workspace
 ```
 
-That command is incremental by default. It uses the newest timestamp already present in `messages/` as the next `--since`, and uses the current timestamp as `--until`.
+That command is incremental by default. It uses the newest timestamp already present in `messages.jsonl` as the next `--since`, and uses the current timestamp as `--until`.
 
 To add more accounts later, re-run `msgmon setup` — it skips completed steps and prompts for new ones.
 
@@ -81,7 +81,7 @@ msgmon slack auth --token=xoxb-... --account=myworkspace
 One-shot scan: emit new messages to a sink, then exit. Safe for cron.
 
 ```bash
-msgmon ingest --account=work --sink=dir --out-dir=./inbox --save-attachments
+msgmon ingest --account=work --sink=jsonl --out-file=./messages.jsonl --save-attachments
 msgmon ingest --sink=ndjson > today.jsonl
 msgmon ingest --sink=exec --exec-cmd='./handle.sh' --mark-read
 ```
@@ -92,10 +92,10 @@ Daemon mode: continuously poll and emit new messages.
 
 ```bash
 msgmon watch --account=work --sink=ndjson | my-router
-msgmon watch --sink=dir --out-dir=/data/inbox --interval-ms=10000
+msgmon watch --sink=jsonl --out-file=/data/messages.jsonl --interval-ms=10000
 ```
 
-Both `ingest` and `watch` support three sinks: `ndjson` (stdout, default), `dir` (one JSON file per message), and `exec` (shell command per message with `MSGMON_*` env vars).
+Both `ingest` and `watch` support three sinks: `ndjson` (stdout, default), `jsonl` (append one JSON object per line to a file), and `exec` (shell command per message with `MSGMON_*` env vars).
 
 ### `msgmon draft`
 
@@ -123,15 +123,15 @@ msgmon server show ./workspace
 ```
 
 Server workspaces contain:
-- `messages/` — pulled message JSON files
+- `messages.jsonl` — pulled message history as JSONL
 - `drafts/` — draft JSON files
 - `workspace.json`, `AGENTS.md`, `status.md`
 
-`msgmon server pull` is the single server-side fetch operation. Every message that matches the pull filters and time range is written to `messages/`. Nothing is routed to a separate `inbox/` or `context/` directory anymore.
+`msgmon server pull` is the single server-side fetch operation. Every message that matches the pull filters and time range is appended to `messages.jsonl`. Nothing is routed to a separate `inbox/` or `context/` directory anymore.
 
 The pull decision is concrete:
 - filter set: the workspace query by default, or `--query` for a one-off Gmail override, plus configured Slack channels or `--slack-channels`
-- lower bound: `--since` if provided; otherwise the newest existing message timestamp in `messages/`; otherwise `pullWindowDays` from `workspace.json`
+- lower bound: `--since` if provided; otherwise the newest existing message timestamp in `messages.jsonl`; otherwise `pullWindowDays` from `workspace.json`
 - upper bound: `--until` if provided; otherwise the exact current timestamp
 
 Examples:

@@ -2,7 +2,7 @@ import path from "node:path"
 import yargs from "yargs"
 import type { Argv } from "yargs"
 import { ingestOnce, watch, buildDefaultStatePath } from "./ingest"
-import { createNdjsonSink, createJsonFileSink, createExecSink } from "./sinks"
+import { createNdjsonSink, createJsonlFileSink, createExecSink } from "./sinks"
 import type { Sink } from "./sinks"
 import { DEFAULT_GMAIL_WORKSPACE_QUERY } from "../defaults"
 import { gmailSource, markGmailRead, fetchGmailAttachment } from "../../platforms/gmail/MailSource"
@@ -22,19 +22,17 @@ let normalizeMultiValue = (value: unknown) => {
 
 let buildSink = (argv: {
   sink: string
-  outDir?: string
+  outFile?: string
   execCmd?: string
   saveAttachments: boolean
   account: string[]
 }): Sink => {
-  if (argv.sink === "dir") {
-    if (!argv.outDir) throw new Error("--out-dir is required when --sink=dir")
-    let outDir = path.resolve(argv.outDir)
-    // For attachment fetching, we need account context.
-    // Use the first account as default — the dir sink writes once per message.
+  if (argv.sink === "jsonl") {
+    if (!argv.outFile) throw new Error("--out-file is required when --sink=jsonl")
+    let filePath = path.resolve(argv.outFile)
     let defaultAccount = argv.account[0] ?? "default"
-    return createJsonFileSink({
-      outDir,
+    return createJsonlFileSink({
+      filePath,
       saveAttachments: argv.saveAttachments,
       fetchAttachment: argv.saveAttachments
         ? (msg, filename) => fetchGmailAttachment(msg, filename, defaultAccount)
@@ -101,12 +99,12 @@ let sharedOptions = (y: Argv) =>
     .option("sink", {
       type: "string",
       default: "ndjson",
-      choices: ["ndjson", "dir", "exec"] as const,
-      describe: "Output sink: ndjson (stdout/file), dir (scannable directories), exec (run command per message)",
+      choices: ["ndjson", "jsonl", "exec"] as const,
+      describe: "Output sink: ndjson (stdout), jsonl (append to a file), exec (run command per message)",
     })
-    .option("out-dir", {
+    .option("out-file", {
       type: "string",
-      describe: "Output directory (required for --sink=dir)",
+      describe: "Output JSONL file (required for --sink=jsonl)",
     })
     .option("exec-cmd", {
       type: "string",
@@ -115,7 +113,7 @@ let sharedOptions = (y: Argv) =>
     .option("save-attachments", {
       type: "boolean",
       default: false,
-      describe: "Download and save attachments (applies to --sink=dir)",
+      describe: "Download and save attachments into the emitted payload when supported",
     })
     .option("mark-read", {
       type: "boolean",
@@ -153,7 +151,7 @@ export let configureIngestCli = (cli: Argv) =>
           : buildDefaultStatePath({ accounts, query: argv.query })
         let sink = buildSink({
           sink: argv.sink,
-          outDir: argv.outDir,
+          outFile: argv.outFile,
           execCmd: argv.execCmd,
           saveAttachments: argv.saveAttachments,
           account: accounts,
@@ -194,7 +192,7 @@ export let configureIngestCli = (cli: Argv) =>
       },
     )
     .example("$0 --account=work --account=personal", "Ingest from multiple accounts, emit NDJSON to stdout")
-    .example("$0 --sink=dir --out-dir=./inbox --save-attachments", "Save messages + attachments to scannable directories")
+    .example("$0 --sink=jsonl --out-file=./messages.jsonl --save-attachments", "Append messages + attachments to a JSONL file")
     .example("$0 --sink=exec --exec-cmd='./handle.sh'", "Run a command for each new message")
     .example(`$0 --query='${DEFAULT_GMAIL_WORKSPACE_QUERY}' --mark-read`, "Ingest unread primary-inbox messages and mark them read")
     .example("$0 --seed --query='newer_than:30d' --max-results=500", "Seed state with recent history without emitting")
@@ -202,7 +200,7 @@ export let configureIngestCli = (cli: Argv) =>
       [
         "Output contract:",
         "- --sink=ndjson: one UnifiedMessage JSON per line to stdout. Summary to stderr.",
-        "- --sink=dir: one JSON file per message under --out-dir.",
+        "- --sink=jsonl: one UnifiedMessage JSON object per line appended to --out-file.",
         "- --sink=exec: runs --exec-cmd per message with MSGMON_* env vars and MSGMON_JSON containing the full UnifiedMessage.",
         "",
         "State:",
@@ -244,7 +242,7 @@ export let configureWatchCli = (cli: Argv) =>
           : buildDefaultStatePath({ accounts, query: argv.query })
         let sink = buildSink({
           sink: argv.sink,
-          outDir: argv.outDir,
+          outFile: argv.outFile,
           execCmd: argv.execCmd,
           saveAttachments: argv.saveAttachments,
           account: accounts,
@@ -278,7 +276,7 @@ export let configureWatchCli = (cli: Argv) =>
       },
     )
     .example("$0 --account=work --account=personal", "Watch multiple accounts, stream NDJSON to stdout")
-    .example("$0 --sink=dir --out-dir=./inbox --save-attachments --interval-ms=10000", "Save new messages to disk every 10s")
+    .example("$0 --sink=jsonl --out-file=./messages.jsonl --save-attachments --interval-ms=10000", "Append new messages to a JSONL file every 10s")
     .example("$0 --sink=exec --exec-cmd='./agent.sh' --mark-read", "Run an agent for each new message, then mark read")
     .example("$0 | my-router-tool", "Pipe NDJSON stream to another process")
     .epilog(
@@ -291,7 +289,7 @@ export let configureWatchCli = (cli: Argv) =>
         "",
         "Daemon usage:",
         "  msgmon watch --account=work --sink=ndjson | my-agent-router",
-        "  msgmon watch --sink=dir --out-dir=/data/inbox --save-attachments &",
+        "  msgmon watch --sink=jsonl --out-file=/data/messages.jsonl --save-attachments &",
       ].join("\n"),
     )
     .strict()

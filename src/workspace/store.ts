@@ -38,7 +38,7 @@ export type WorkspaceBundle = {
   files: WorkspaceExportFile[]
 }
 
-let WORKSPACE_DIRS = ["messages", "drafts"] as const
+let WORKSPACE_DIRS = ["drafts"] as const
 let SERVER_DIRNAME = ".server"
 
 let DEFAULT_AGENTS = `# AGENTS.md
@@ -51,7 +51,7 @@ is happening, identify what matters, and produce useful outputs for the user.
 
 ## What You Should Do
 
-- Read \`messages/\` for the pulled message history.
+- Read \`messages.jsonl\` for the pulled message history.
 - The first thing you should do is tell the user the new important information they need to know now, especially urgent issues, deadlines, risks, notable updates, or anything that changes priorities.
 - After that, tell the user the next actions you recommend taking.
 - Then ask the user whether you should proceed.
@@ -74,13 +74,13 @@ is happening, identify what matters, and produce useful outputs for the user.
 workspace.json  — read-only workspace metadata
 AGENTS.md       — this file
 status.md       — working summary maintained by the agent
-messages/       — pulled message JSON files (read-only)
+messages.jsonl  — pulled message history as JSONL (read-only)
 drafts/         — draft JSON files the agent may create or revise
 \`\`\`
 
 ## Rules
 
-- Treat \`workspace.json\` and \`messages/\` as read-only.
+- Treat \`workspace.json\` and \`messages.jsonl\` as read-only.
 - \`status.md\` must be kept accurate. Do not leave it stale after reviewing messages, creating drafts, researching issues, or changing plans.
 - Never send a message without explicit user approval.
 - Do not assume local tools can safely mutate remote state.
@@ -155,7 +155,7 @@ let isWritablePath = (relPath: string) =>
   || relPath === "AGENTS.md"
   || relPath.startsWith("drafts/")
 
-let MANAGED_FILE_PATHS = ["workspace.json", "AGENTS.md", "status.md"] as const
+let MANAGED_FILE_PATHS = ["workspace.json", "AGENTS.md", "status.md", "messages.jsonl"] as const
 let MANAGED_DIR_PATHS = [...WORKSPACE_DIRS, LOCAL_CONFIG_DIRNAME] as const
 
 let ensureWorkspaceLayoutCompatible = (root: string) => {
@@ -249,6 +249,9 @@ export let initWorkspace = (
     fs.mkdirSync(path.resolve(root, dir), { recursive: true })
   }
   fs.mkdirSync(workspaceStateRoot(id), { recursive: true })
+  if (!fs.existsSync(path.resolve(root, "messages.jsonl"))) {
+    fs.writeFileSync(path.resolve(root, "messages.jsonl"), "")
+  }
 
   let now = new Date().toISOString()
   let config: WorkspaceConfig = {
