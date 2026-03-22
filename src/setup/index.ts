@@ -449,7 +449,6 @@ let pullMessagesForSetup = async (workspaceId: string, params: { since?: string;
     maxResults: 200,
     markRead: false,
     saveAttachments: false,
-    seed: false,
     verbose: false,
     query: setupQuery,
     since: params.since,
@@ -458,6 +457,9 @@ let pullMessagesForSetup = async (workspaceId: string, params: { since?: string;
 
   if (result.scanned > 0 || result.ingested > 0) {
     ok(`${result.scanned} message(s) scanned, ${result.ingested} written to messages.jsonl for ${result.since} to ${result.until}.`)
+  }
+  for (let stats of result.accountStats) {
+    info(`[account ${stats.account}] scanned=${stats.scanned} written=${stats.ingested} skipped=${stats.skipped}`)
   }
 
   for (let err of result.errors) {

@@ -160,19 +160,12 @@ describe("workspace store", () => {
     assert.match(status, /Bundled/)
   })
 
-  it("tracks a pull state path and can infer the latest pulled message timestamp", async () => {
+  it("can infer the latest pulled message timestamp from messages.jsonl", async () => {
     let dir = useDir("pull-state")
-    let result = workspaceStore.initWorkspace("default", {
+    workspaceStore.initWorkspace("default", {
       accounts: ["default"],
       query: "in:inbox category:primary",
     })
-
-    let pullStatePath = workspaceRuntime.buildWorkspacePullStatePath(
-      result.config.id,
-      result.config.accounts,
-      result.config.query,
-    )
-    assert.match(pullStatePath, /pull-[a-f0-9]{16}\.json$/)
 
     fs.writeFileSync(path.join(dir, "messages.jsonl"), [
       JSON.stringify({
@@ -193,6 +186,35 @@ describe("workspace store", () => {
       await workspaceRuntime.latestPulledMessageTimestamp("default"),
       "2026-03-22T00:05:00.000Z",
     )
+  })
+
+  it("sorts messages.jsonl into timestamp order", () => {
+    let dir = useDir("sorted-messages")
+    workspaceStore.initWorkspace("default", {
+      accounts: ["default"],
+      query: "in:inbox category:primary",
+    })
+
+    fs.writeFileSync(path.join(dir, "messages.jsonl"), [
+      JSON.stringify({
+        id: "b",
+        platform: "gmail",
+        timestamp: "2026-03-22T00:05:00.000Z",
+        platformMetadata: { platform: "gmail", messageId: "b" },
+      }),
+      JSON.stringify({
+        id: "a",
+        platform: "gmail",
+        timestamp: "2026-03-22T00:00:00.000Z",
+        platformMetadata: { platform: "gmail", messageId: "a" },
+      }),
+    ].join("\n") + "\n")
+
+    workspaceRuntime.sortMessagesJsonl(path.join(dir, "messages.jsonl"))
+
+    let lines = fs.readFileSync(path.join(dir, "messages.jsonl"), "utf8").trim().split("\n")
+    assert.equal(JSON.parse(lines[0]!).id, "a")
+    assert.equal(JSON.parse(lines[1]!).id, "b")
   })
 })
 

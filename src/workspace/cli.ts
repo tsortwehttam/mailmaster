@@ -110,11 +110,6 @@ export let configureServerCli = (cli: Argv) =>
             default: false,
             describe: "Download and save attachments",
           })
-          .option("seed", {
-            type: "boolean",
-            default: false,
-            describe: "Record IDs in state without writing messages.jsonl entries",
-          })
           .option("query", {
             type: "string",
             describe: "Override the configured Gmail query for this pull",
@@ -136,7 +131,7 @@ export let configureServerCli = (cli: Argv) =>
           .option("clear", {
             type: "boolean",
             default: false,
-            describe: "Clear messages.jsonl and reset pull state before pulling",
+            describe: "Clear messages.jsonl before pulling",
           })
           .option("verbose", {
             alias: "v",
@@ -152,7 +147,6 @@ export let configureServerCli = (cli: Argv) =>
           maxResults: argv.maxResults,
           markRead: argv.markRead,
           saveAttachments: argv.saveAttachments,
-          seed: argv.seed,
           query: argv.query,
           slackChannels: argv.slackChannels,
           since: argv.since,

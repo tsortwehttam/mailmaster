@@ -136,6 +136,7 @@ describe("ingestOnce", () => {
 
     assert.equal(result.ingested, 1)
     assert.equal(result.scanned, 2)
+    assert.equal(result.accountStats[0]?.skipped, 1)
     assert.equal(sink.collected.length, 1)
     assert.equal(sink.collected[0].id, "msg-002")
   })
@@ -258,7 +259,7 @@ describe("ingestOnce", () => {
     let sink = makeCollectorSink()
     let statePath = path.join(tmpDir, "state.json")
 
-    await ingestOnce({
+    let result = await ingestOnce({
       sources: [{ source, accounts: ["work", "personal"] }],
       query: "is:unread",
       maxResults: 100,
@@ -271,6 +272,13 @@ describe("ingestOnce", () => {
 
     assert.deepEqual(callLog, ["work", "personal"])
     assert.equal(sink.collected.length, 2)
+    assert.deepEqual(
+      result.accountStats.map(stats => ({ account: stats.account, scanned: stats.scanned, ingested: stats.ingested })),
+      [
+        { account: "work", scanned: 1, ingested: 1 },
+        { account: "personal", scanned: 1, ingested: 1 },
+      ],
+    )
   })
 
   it("seed mode records IDs without emitting to sink", async () => {

@@ -1,6 +1,5 @@
 import fs from "node:fs"
 import path from "node:path"
-import crypto from "node:crypto"
 import readline from "node:readline"
 import { prependConfigDir, LOCAL_CONFIG_DIRNAME } from "../CliConfig"
 import { createJsonlFileSink } from "../ingest/sinks"
@@ -26,11 +25,12 @@ let splitAccounts = (accounts: string[]) => {
 }
 
 let normalizeDateForGmail = (value?: string) => value?.replace(/-/g, "/")
+let isDateOnly = (value?: string) => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 
 let buildPullGmailQuery = (params: { baseQuery: string; since?: string; until?: string }) => {
   let terms = [params.baseQuery.trim()]
-  let since = normalizeDateForGmail(params.since)
-  let until = normalizeDateForGmail(params.until)
+  let since = isDateOnly(params.since) ? normalizeDateForGmail(params.since) : undefined
+  let until = isDateOnly(params.until) ? normalizeDateForGmail(params.until) : undefined
   if (since) terms.push(`after:${since}`)
   if (until) terms.push(`before:${until}`)
   return terms.filter(Boolean).join(" ").trim()
@@ -78,17 +78,6 @@ let resolveMarkRead = (msg: UnifiedMessage, account: string) => {
   return markGmailRead(msg, account)
 }
 
-export let buildWorkspacePullStatePath = (workspaceId: string, accounts: string[], query: string, slackChannels?: string[]) => {
-  let key = JSON.stringify({
-    scope: "pull",
-    accounts: accounts.slice().sort(),
-    query,
-    slackChannels: (slackChannels ?? []).slice().sort(),
-  })
-  let digest = crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)
-  return path.resolve(workspaceStateRoot(workspaceId), `pull-${digest}.json`)
-}
-
 let attachmentFetcher = (accounts: string[]) =>
   async (msg: UnifiedMessage, filename: string) => fetchGmailAttachment(msg, filename, accounts[0] ?? "default")
 
@@ -100,6 +89,36 @@ let timestampMs = (value?: string) => {
   let ms = Date.parse(value)
   if (!Number.isFinite(ms)) throw new Error(`Invalid timestamp "${value}"`)
   return ms
+}
+
+export let sortMessagesJsonl = (filePath: string) => {
+  if (!fs.existsSync(filePath)) return
+  let raw = fs.readFileSync(filePath, "utf8")
+  let entries = raw
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map((line, index) => ({ line, index }))
+    .map(({ line, index }) => ({
+      line,
+      index,
+      msg: JSON.parse(line) as { timestamp?: string; platform?: string; id?: string },
+    }))
+
+  entries.sort((a, b) => {
+    let aTs = timestampMs(a.msg.timestamp) ?? 0
+    let bTs = timestampMs(b.msg.timestamp) ?? 0
+    if (aTs !== bTs) return aTs - bTs
+    let aPlatform = a.msg.platform ?? ""
+    let bPlatform = b.msg.platform ?? ""
+    if (aPlatform !== bPlatform) return aPlatform.localeCompare(bPlatform)
+    let aId = a.msg.id ?? ""
+    let bId = b.msg.id ?? ""
+    if (aId !== bId) return aId.localeCompare(bId)
+    return a.index - b.index
+  })
+
+  fs.writeFileSync(filePath, entries.map(entry => entry.line).join("\n") + (entries.length ? "\n" : ""))
 }
 
 export let latestPulledMessageTimestamp = (workspaceId: string) => {
@@ -142,7 +161,6 @@ export let pullWorkspaceMessages = async (params: {
   maxResults: number
   markRead: boolean
   saveAttachments: boolean
-  seed: boolean
   verbose: boolean
   query?: string
   since?: string
@@ -154,18 +172,11 @@ export let pullWorkspaceMessages = async (params: {
   let root = workspaceRoot(config.id)
   let messagesPath = resolveMessagesPath(config.id)
   let effectiveQuery = params.query ?? config.query
-  let statePath = buildWorkspacePullStatePath(
-    config.id,
-    config.accounts,
-    effectiveQuery,
-    params.slackChannels?.length ? params.slackChannels : config.slackChannels,
-  )
 
   prependConfigDir(path.resolve(root, LOCAL_CONFIG_DIRNAME))
 
   if (params.clear) {
     fs.rmSync(messagesPath, { force: true })
-    fs.rmSync(statePath, { force: true })
   }
 
   let effectiveSince = params.since ?? await defaultPullSince(config.id, config.pullWindowDays)
@@ -194,18 +205,18 @@ export let pullWorkspaceMessages = async (params: {
     query: effectiveQuery,
     maxResults: params.maxResults,
     sink,
-    statePath,
     markRead: resolveMarkRead,
     doMarkRead: params.markRead,
-    seed: params.seed,
+    seed: false,
     verbose: params.verbose,
   })
+
+  sortMessagesJsonl(messagesPath)
 
   return {
     ...result,
     query: effectiveQuery,
     since: effectiveSince,
     until: effectiveUntil,
-    statePath,
   }
 }
