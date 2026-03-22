@@ -21,6 +21,9 @@ msgmon uses a server/client directory model:
 # 1. Set up a server workspace (walks through account auth)
 msgmon setup ./workspace
 
+# or make the initial pull window explicit
+msgmon setup ./workspace --since=2026-03-15 --until=2026-03-22T12:00:00Z
+
 # 2. Start the server
 msgmon serve ./workspace
 

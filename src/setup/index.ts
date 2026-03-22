@@ -435,8 +435,13 @@ let setupWorkspace = async (workspaceId: string, slackChannels?: string[]): Prom
 // Initial server pull
 // ---------------------------------------------------------------------------
 
-let pullMessagesForSetup = async (workspaceId: string): Promise<boolean> => {
+let pullMessagesForSetup = async (workspaceId: string, params: { since?: string; until?: string } = {}): Promise<boolean> => {
+  let config = loadWorkspaceConfig(workspaceId)
   info("Pulling initial messages...")
+  info(`Gmail query: ${config.query}`)
+  if (config.slackChannels?.length) info(`Slack channels: ${config.slackChannels.join(", ")}`)
+  if (params.since) info(`Since: ${params.since}`)
+  if (params.until) info(`Until: ${params.until}`)
   let result = await pullWorkspaceMessages({
     workspaceId,
     maxResults: 200,
@@ -444,6 +449,8 @@ let pullMessagesForSetup = async (workspaceId: string): Promise<boolean> => {
     saveAttachments: false,
     seed: false,
     verbose: false,
+    since: params.since,
+    until: params.until,
   })
 
   if (result.scanned > 0 || result.ingested > 0) {
@@ -456,7 +463,7 @@ let pullMessagesForSetup = async (workspaceId: string): Promise<boolean> => {
       console.log("Your token may have expired or been revoked.")
       if (await confirm("Re-authorize Gmail now?", true)) {
         let success = await authorizeOneGmailAccount()
-        if (success) return pullMessagesForSetup(workspaceId)
+        if (success) return pullMessagesForSetup(workspaceId, params)
       }
     } else if (err.includes("Missing token")) {
       fail(`${err}`)
@@ -473,7 +480,7 @@ let pullMessagesForSetup = async (workspaceId: string): Promise<boolean> => {
 // Main setup flow
 // ---------------------------------------------------------------------------
 
-export let runSetup = async (options: { workspace?: string }) => {
+export let runSetup = async (options: { workspace?: string; since?: string; until?: string }) => {
   let workspaceId = options.workspace ?? "default"
 
   rl = readline.createInterface({
@@ -542,7 +549,10 @@ export let runSetup = async (options: { workspace?: string }) => {
 
     // Step 6: Initial pull
     step(6, "Initial Message Pull")
-    let pulled = await pullMessagesForSetup(workspaceId)
+    let pulled = await pullMessagesForSetup(workspaceId, {
+      since: options.since,
+      until: options.until,
+    })
     if (!pulled) {
       let cont = await confirm("Continue anyway?", true)
       if (!cont) {
