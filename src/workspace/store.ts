@@ -12,7 +12,6 @@ export interface WorkspaceConfig {
   name: string
   accounts: string[]
   query: string
-  pullWindowDays: number
   slackChannels?: string[]
   createdAt: string
   updatedAt: string
@@ -116,7 +115,6 @@ let WorkspaceConfigSchema = z.object({
   name: z.string().min(1),
   accounts: z.array(z.string()).min(1),
   query: z.string(),
-  pullWindowDays: z.number().int().min(1).default(14),
   slackChannels: z.array(z.string()).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -228,7 +226,6 @@ export let initWorkspace = (
     name?: string
     accounts?: string[]
     query?: string
-    pullWindowDays?: number
     slackChannels?: string[]
     overwrite?: boolean
   } = {},
@@ -260,7 +257,6 @@ export let initWorkspace = (
     name: options.name ?? id,
     accounts: options.accounts ?? ["default"],
     query: options.query ?? DEFAULT_GMAIL_WORKSPACE_QUERY,
-    pullWindowDays: options.pullWindowDays ?? 14,
     slackChannels: options.slackChannels?.length ? options.slackChannels : undefined,
     createdAt: now,
     updatedAt: now,
@@ -362,7 +358,6 @@ export let importWorkspaceBundle = (params: {
     name: bundle.config.name,
     accounts: bundle.config.accounts,
     query: bundle.config.query,
-    pullWindowDays: bundle.config.pullWindowDays,
     overwrite: params.overwrite,
   })
   writeSnapshotFiles(workspaceId, bundle.files)
