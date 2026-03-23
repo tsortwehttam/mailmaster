@@ -73,10 +73,10 @@ Your priorities:
 ## Workspace Layout
 
 \`\`\`
-workspace.json  — read-only workspace metadata
+workspace.json  — workspace metadata (read-only)
 AGENTS.md       — this file (read-only)
 messages.jsonl  — pulled message history as JSONL (read-only)
-state.jsonl     — agent working state (the only writable file)
+state.jsonl     — agent working state (writable)
 \`\`\`
 
 ## state.jsonl
@@ -93,11 +93,8 @@ Update entries by rewriting with the same \`id\`. Keep a \`"summary"\` entry cur
 
 ## Rules
 
-- Treat \`workspace.json\`, \`AGENTS.md\`, and \`messages.jsonl\` as read-only.
 - Write all outputs to \`state.jsonl\` — summaries, drafts, todos, scheduled tasks.
 - Never send a message without explicit user approval.
-- Do not assume local tools can safely mutate remote state.
-- Use the messaging proxy server API for privileged actions such as send, mark-read, archive, and other server-backed actions.
 - If a \`README.md\` or \`instructions.md\` file is present in the workspace, read and follow those instructions as well.
 `)
 
