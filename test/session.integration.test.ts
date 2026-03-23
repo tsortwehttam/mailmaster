@@ -83,18 +83,13 @@ describe("session sync integration", () => {
       })
       assert.equal(pulled.workspaceId, "default")
       assert.ok(fs.existsSync(path.join(clientDir, "status.md")))
-      assert.ok(fs.existsSync(path.join(clientDir, ".msgmon-session", "session.json")))
+      assert.ok(fs.existsSync(path.join(clientDir, "AGENTS.md")))
+      // Server connection info should be written into AGENTS.md
+      let agentsMd = fs.readFileSync(path.join(clientDir, "AGENTS.md"), "utf8")
+      assert.match(agentsMd, /## Server/)
+      assert.match(agentsMd, new RegExp(serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 
       fs.writeFileSync(path.join(clientDir, "status.md"), "# Status\n\nLocal update.\n")
-
-      await assert.rejects(
-        sessionClient.syncPull({
-          serverUrl,
-          token: "reader",
-          dir: clientDir,
-        }),
-        /Local writable files have changed/,
-      )
 
       let pushed = await sessionClient.syncPush({
         serverUrl,

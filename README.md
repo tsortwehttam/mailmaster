@@ -35,7 +35,7 @@ msgmon client start \
   --agent-command='codex .'
 ```
 
-The agent sees only exported files plus `.msgmon-session/` sync metadata. New messages arrive via explicit pulls — either `msgmon server pull ./workspace` on a cron, or `POST /api/workspace/pull` through the server.
+The agent sees only exported workspace files. Server connection details are written into `AGENTS.md` so the agent can call server APIs. New messages arrive via explicit pulls — either `msgmon server pull ./workspace` on a cron, or `POST /api/workspace/pull` through the server.
 
 During setup, the initial Gmail bootstrap pull uses `in:inbox category:primary` plus the chosen time range. Ongoing server pulls use the workspace query, which also currently defaults to `in:inbox category:primary`.
 

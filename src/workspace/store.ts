@@ -40,18 +40,24 @@ export type WorkspaceBundle = {
 let WORKSPACE_DIRS = ["drafts"] as const
 let SERVER_DIRNAME = ".server"
 
-let DEFAULT_AGENTS = `# AGENTS.md
+export let defaultAgentInstructions = (options: { serverUrl?: string; token?: string } = {}) => {
+  let sections: string[] = []
+  sections.push(`# Agent Instructions
 
-You are managing a message workspace for a human user.
+You're a helpful AI assistant managing a human user's communications workspace.
 
-Your job is to help the user stay on top of communications and the work that
-flows from them. Use the message history in this workspace to understand what
-is happening, identify what matters, and produce useful outputs for the user.
+This workspace contains a \`messages.jsonl\` file that contains the user's message history - from email, team chat, instant message, social media.
 
-## What You Should Do
+Your job is to help the user stay on top of the user's inbound and outbound communications - and the work that flows from them.
 
-- Read \`messages.jsonl\` for the pulled message history.
-- The first thing you should do is tell the user the new important information they need to know now, especially urgent issues, deadlines, risks, notable updates, or anything that changes priorities.
+Use the message history to understand what is happening and identify key actions to take.
+
+Your priorities:
+
+1. Tell the user the most important information they need to know now - urgent issues, deadlines, risks, notable updates, or anything that changes priorities.
+2. Summarize the context in a digestible way; enough information to make decisions, but not so much as to overwhelm them.
+3. 
+
 - After that, tell the user the next actions you recommend taking.
 - Then ask the user whether you should proceed.
 - Treat \`status.md\` as the authoritative working summary of the workspace.
@@ -65,7 +71,6 @@ is happening, identify what matters, and produce useful outputs for the user.
 - Produce artifacts the user may need, such as reports, plans, documents, presentations, summaries, and research notes.
 - Research issues raised in messages and suggest next steps.
 - Help the user schedule future work and sequence follow-ups.
-- When running in a synced session, use the local \`.msgmon-session/\` metadata to discover the messaging proxy server and its available API capabilities.
 
 ## Workspace Layout
 
@@ -87,7 +92,19 @@ drafts/         — draft JSON files the agent may create or revise
 - Prefer revising an existing draft over creating duplicate drafts.
 - Keep \`status.md\` concise, high-signal, and decision-useful.
 - If a \`README.md\` or \`instructions.md\` file is present in the workspace, read and follow those instructions as well.
-`
+`)
+
+  if (options.serverUrl) {
+    let serverSection = `\n## Server\n\nThe messaging proxy server is available at \`${options.serverUrl}\`.`
+    if (options.token) {
+      serverSection += `\nAuthenticate with header: \`X-Auth-Token: ${options.token}\``
+    }
+    serverSection += `\nUse the server API for privileged actions such as send, mark-read, archive, and pulling new messages.`
+    sections.push(serverSection)
+  }
+
+  return sections.join("\n")
+}
 
 let DEFAULT_STATUS = `# Status
 
@@ -264,7 +281,7 @@ export let initWorkspace = (
 
   fs.writeFileSync(path.resolve(root, "workspace.json"), JSON.stringify(config, null, 2) + "\n")
   if (!fs.existsSync(path.resolve(root, "AGENTS.md"))) {
-    fs.writeFileSync(path.resolve(root, "AGENTS.md"), DEFAULT_AGENTS)
+    fs.writeFileSync(path.resolve(root, "AGENTS.md"), defaultAgentInstructions())
   }
   if (!fs.existsSync(path.resolve(root, "status.md"))) {
     fs.writeFileSync(path.resolve(root, "status.md"), DEFAULT_STATUS)
@@ -375,10 +392,10 @@ export let importWorkspaceBundle = (params: {
 
 export let applyWorkspacePush = (
   workspaceId: string,
-  params: { baseRevision: string; files: WorkspacePushFile[] },
+  params: { baseRevision?: string; files: WorkspacePushFile[] },
 ) => {
   let current = exportWorkspaceSnapshot(workspaceId)
-  if (current.revision !== params.baseRevision) {
+  if (params.baseRevision && current.revision !== params.baseRevision) {
     throw new Error(`Workspace revision conflict: expected ${params.baseRevision}, current is ${current.revision}`)
   }
 

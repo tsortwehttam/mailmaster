@@ -164,7 +164,7 @@ export let WorkspacePushFile = z.object({
 export type WorkspacePushFile = z.infer<typeof WorkspacePushFile>
 
 export let WorkspacePushRequest = WorkspaceIdParam.extend({
-  baseRevision: z.string().min(1, "baseRevision is required"),
+  baseRevision: z.string().optional(),
   files: z.array(WorkspacePushFile).default([]),
 })
 export type WorkspacePushRequest = z.infer<typeof WorkspacePushRequest>
