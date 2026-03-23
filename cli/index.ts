@@ -9,14 +9,13 @@ import { parseSlackCli } from "../platforms/slack"
 import { parseTeamsCli } from "../platforms/teams"
 import { parseWhatsAppCli } from "../platforms/whatsapp"
 import { parseServeCli } from "../src/serve/cli"
-import { parseDraftCli } from "../src/draft/cli"
 import { parseServerCli } from "../src/workspace/cli"
 import { parseClientCli } from "../src/session/cli"
 import { parseSetupCli } from "../src/setup/cli"
 import { verboseLog } from "../src/Verbose"
 
 let args = hideBin(process.argv)
-let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "server", "client", "setup", "help"])
+let subcommands = new Set(["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "server", "client", "setup", "help"])
 let verbose = args.includes("--verbose") || args.includes("-v")
 let commandIndex = args.findIndex(x => !x.startsWith("-"))
 let command = commandIndex >= 0 ? args[commandIndex] : undefined
@@ -27,7 +26,7 @@ let helpBuilder = (y: import("yargs").Argv) =>
   y
     .positional("platform", {
       type: "string",
-      choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "draft", "server", "client", "setup"] as const,
+      choices: ["gmail", "slack", "teams", "whatsapp", "ingest", "watch", "corpus", "serve", "server", "client", "setup"] as const,
       describe: "Platform or command to show help for",
     })
     .positional("command", {
@@ -50,9 +49,8 @@ let cli = yargs(args)
   .command("corpus", "Build LLM-oriented corpus (messages.jsonl, chunks.jsonl, threads.jsonl) from ingested messages")
   .command("setup", "Interactive guided setup: credentials, auth, and server workspace bootstrap")
   .command("serve", "HTTP API server: secret-holding control plane for a server workspace")
-  .command("draft", "Compose, list, send, edit, and delete message drafts")
   .command("server", "Initialize and refresh the server-side workspace directory")
-  .command("client", "Pull, watch, and start an agent-safe client mirror against serve")
+  .command("client", "Pull, push, and start an agent session against serve")
   .command("slack", "Slack: auth, search, read, send messages")
   .command("teams", "Teams: search, read, send messages (planned)")
   .command("whatsapp", "WhatsApp: read, send messages (planned)")
@@ -76,7 +74,6 @@ let cli = yargs(args)
       else if (platform === "slack") await parseSlackCli(helpArgs, "msgmon slack")
       else if (platform === "teams") await parseTeamsCli(helpArgs, "msgmon teams")
       else if (platform === "whatsapp") await parseWhatsAppCli(helpArgs, "msgmon whatsapp")
-      else if (platform === "draft") await parseDraftCli(helpArgs, "msgmon draft")
       else if (platform === "server") await parseServerCli(helpArgs, "msgmon server")
       else if (platform === "client") await parseClientCli(helpArgs, "msgmon client")
       else if (platform === "setup") await parseSetupCli(helpArgs, "msgmon setup")
@@ -102,9 +99,8 @@ let cli = yargs(args)
       "  corpus    — Build LLM corpus from ingested message directories.",
       "  setup     — Interactive guided setup: credentials, auth, and server workspace bootstrap.",
       "  serve     — Secret-holding HTTP control plane for a server workspace.",
-      "  draft     — Compose, list, send, edit, and delete message drafts.",
       "  server    — Initialize and refresh the server-side workspace directory.",
-      "  client    — Pull, push, watch, or start an agent-safe client mirror.",
+      "  client    — Pull, push, or start an agent session against serve.",
       "",
       "Platforms:",
       "  slack     — Slack via @slack/web-api",
@@ -266,17 +262,6 @@ else if (!dispatched && command === "whatsapp") {
 }
 
 // ---------------------------------------------------------------------------
-// Draft — compose, list, send, edit, delete message drafts
-// ---------------------------------------------------------------------------
-
-else if (!dispatched && command === "draft") {
-  parseDraftCli([...forwardedVerboseArgs, ...commandArgs], "msgmon draft").catch(e => {
-    console.error(e?.message ?? e)
-    process.exit(1)
-  })
-}
-
-// ---------------------------------------------------------------------------
 // Server — create and manage the server-side workspace
 // ---------------------------------------------------------------------------
 
@@ -335,8 +320,6 @@ else if (!dispatched && command === "help") {
     parseTeamsCli([...forwardedVerboseArgs, "--help"], "msgmon teams")
   } else if (subhelp === "whatsapp") {
     parseWhatsAppCli([...forwardedVerboseArgs, "--help"], "msgmon whatsapp")
-  } else if (subhelp === "draft") {
-    parseDraftCli([...forwardedVerboseArgs, "--help"], "msgmon draft")
   } else if (subhelp === "server") {
     parseServerCli([...forwardedVerboseArgs, "--help"], "msgmon server")
   } else if (subhelp === "client") {

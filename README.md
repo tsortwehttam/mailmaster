@@ -14,7 +14,7 @@ msgmon --help
 
 msgmon uses a server/client directory model:
 
-- A **server workspace** holds `messages.jsonl`, `drafts/`, `status.md`, `AGENTS.md`, and a hidden `.msgmon/` folder for secrets and state.
+- A **server workspace** holds `messages.jsonl`, `state.jsonl`, `AGENTS.md`, and a hidden `.msgmon/` folder for secrets and state.
 - A **client** directory receives an agent-safe mirror — no credentials exposed.
 
 ```bash
@@ -129,8 +129,8 @@ msgmon server show ./workspace
 
 Server workspaces contain:
 - `messages.jsonl` — pulled message history as JSONL
-- `drafts/` — draft JSON files
-- `workspace.json`, `AGENTS.md`, `status.md`
+- `state.jsonl` — agent working state (summaries, drafts, todos, etc.)
+- `workspace.json`, `AGENTS.md`
 
 `msgmon server pull` is the single server-side fetch operation. Every message that matches the pull filters and time range is appended to `messages.jsonl`. Nothing is routed to a separate `inbox/` or `context/` directory anymore.
 
@@ -167,7 +167,7 @@ msgmon serve ./workspace --token=mysecret
 msgmon serve ./workspace --gmail-allow-to=a@x.com --slack-allow-channels=general --send-rate-limit=10
 msgmon serve ./workspace \
   --scoped-token=reader=read,workspace_read \
-  --scoped-token=writer=workspace_write,drafts
+  --scoped-token=writer=workspace_write,send
 ```
 
 If you omit `--token` and `--scoped-token`, a secure random token is generated and saved to `.msgmon/serve.json`.
@@ -184,11 +184,9 @@ Filesystem sync for isolated agent runtimes.
 msgmon client start --server=http://127.0.0.1:3271 --dir=/tmp/agent-sandbox --agent-command='codex .'
 msgmon client pull --server=http://127.0.0.1:3271 --dir=/tmp/agent-sandbox
 msgmon client push --dir=/tmp/agent-sandbox
-msgmon client status --dir=/tmp/agent-sandbox
-msgmon client stop --dir=/tmp/agent-sandbox
 ```
 
-`push` sends only bounded writable paths back to the server: `AGENTS.md`, `status.md`, and `drafts/**`. The `--watch` flag on `start` syncs changes on an interval.
+`push` sends only `state.jsonl` back to the server.
 
 ### `msgmon gmail` / `msgmon slack`
 

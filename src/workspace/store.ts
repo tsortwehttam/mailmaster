@@ -5,7 +5,7 @@ import zlib from "node:zlib"
 import { z } from "zod"
 import { PWD_CONFIG_DIR, LOCAL_CONFIG_DIRNAME, currentWorkspaceDir } from "../CliConfig"
 import { DEFAULT_GMAIL_WORKSPACE_QUERY, DEFAULT_WORKSPACE_ID } from "../defaults"
-import { Draft } from "../draft/schema"
+
 
 export interface WorkspaceConfig {
   id: string
@@ -37,20 +37,21 @@ export type WorkspaceBundle = {
   files: WorkspaceExportFile[]
 }
 
-let WORKSPACE_DIRS = ["drafts"] as const
+let WORKSPACE_DIRS = [] as const
 let SERVER_DIRNAME = ".server"
 
 export let defaultAgentInstructions = (options: { serverUrl?: string; token?: string } = {}) => {
   let sections: string[] = []
-  sections.push(`# Agent Instructions
+  sections.push(`
+# Agent Instructions
 
 You're a helpful AI assistant managing a human user's communications workspace.
 
-This workspace contains a \`messages.jsonl\` file that contains the user's message history - from email, team chat, instant message, social media.
+This workspace has a \`messages.jsonl\` file with the user's message history - email, team chat, instant message, social media.
 
-Your job is to help the user stay on top of the user's inbound and outbound communications - and the work that flows from them.
+Your job is to help the user stay on top of their inbound and outbound communications - and the work that flows from them.
 
-Use the message history to understand what is happening and identify key actions to take.
+Use the message history to understand what is happening and identify what actions to take.
 
 Your priorities:
 
@@ -60,9 +61,6 @@ Your priorities:
 
 - After that, tell the user the next actions you recommend taking.
 - Then ask the user whether you should proceed.
-- Treat \`status.md\` as the authoritative working summary of the workspace.
-- Update \`status.md\` before and after any substantial work so it accurately reflects the current state.
-- Keep \`status.md\` current with outstanding tasks, deadlines, blockers, urgent issues, and follow-ups.
 - Surface urgent problems, critical mistakes, missed commitments, and time-sensitive decisions.
 - Track open loops across multiple threads and people.
 - Proactively draft replies when helpful.
@@ -76,21 +74,30 @@ Your priorities:
 
 \`\`\`
 workspace.json  — read-only workspace metadata
-AGENTS.md       — this file
-status.md       — working summary maintained by the agent
+AGENTS.md       — this file (read-only)
 messages.jsonl  — pulled message history as JSONL (read-only)
-drafts/         — draft JSON files the agent may create or revise
+state.jsonl     — agent working state (the only writable file)
 \`\`\`
+
+## state.jsonl
+
+\`state.jsonl\` is the only file you write to. Each line is a JSON object with:
+
+- \`id\` — unique identifier
+- \`type\` — entry type: \`"summary"\`, \`"draft"\`, \`"todo"\`, \`"scheduled"\`, etc.
+- \`status\` — lifecycle status: \`"current"\`, \`"pending"\`, \`"open"\`, \`"done"\`, etc.
+- \`data\` — type-specific payload
+- \`createdAt\` / \`updatedAt\` — ISO timestamps
+
+Update entries by rewriting with the same \`id\`. Keep a \`"summary"\` entry current with outstanding tasks, deadlines, blockers, and follow-ups.
 
 ## Rules
 
-- Treat \`workspace.json\` and \`messages.jsonl\` as read-only.
-- \`status.md\` must be kept accurate. Do not leave it stale after reviewing messages, creating drafts, researching issues, or changing plans.
+- Treat \`workspace.json\`, \`AGENTS.md\`, and \`messages.jsonl\` as read-only.
+- Write all outputs to \`state.jsonl\` — summaries, drafts, todos, scheduled tasks.
 - Never send a message without explicit user approval.
 - Do not assume local tools can safely mutate remote state.
 - Use the messaging proxy server API for privileged actions such as send, mark-read, archive, and other server-backed actions.
-- Prefer revising an existing draft over creating duplicate drafts.
-- Keep \`status.md\` concise, high-signal, and decision-useful.
 - If a \`README.md\` or \`instructions.md\` file is present in the workspace, read and follow those instructions as well.
 `)
 
@@ -105,27 +112,6 @@ drafts/         — draft JSON files the agent may create or revise
 
   return sections.join("\n")
 }
-
-let DEFAULT_STATUS = `# Status
-
-> Last updated: never
-
-## Urgent
-
-_Nothing urgent._
-
-## Action Items
-
-_No pending action items._
-
-## Draft Responses
-
-_No drafts pending review._
-
-## Summary
-
-_No messages processed yet._
-`
 
 let WorkspaceConfigSchema = z.object({
   id: z.string().min(1),
@@ -142,7 +128,7 @@ let relativePath = (...parts: string[]) => path.resolve(currentWorkspaceDir(), .
 export let workspaceRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => relativePath()
 export let workspaceServerRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => path.resolve(PWD_CONFIG_DIR)
 export let workspaceStateRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => path.resolve(PWD_CONFIG_DIR, "state")
-export let workspaceDraftsRoot = (_workspaceId = DEFAULT_WORKSPACE_ID) => relativePath("drafts")
+
 
 let ensureSafeWorkspaceId = (workspaceId: string) => {
   if (!/^[A-Za-z0-9._-]+$/.test(workspaceId)) {
@@ -167,11 +153,9 @@ let isExportablePath = (relPath: string) => {
 }
 
 let isWritablePath = (relPath: string) =>
-  relPath === "status.md"
-  || relPath === "AGENTS.md"
-  || relPath.startsWith("drafts/")
+  relPath === "state.jsonl"
 
-let MANAGED_FILE_PATHS = ["workspace.json", "AGENTS.md", "status.md", "messages.jsonl"] as const
+let MANAGED_FILE_PATHS = ["workspace.json", "AGENTS.md", "state.jsonl", "messages.jsonl"] as const
 let MANAGED_DIR_PATHS = [...WORKSPACE_DIRS, LOCAL_CONFIG_DIRNAME] as const
 
 let ensureWorkspaceLayoutCompatible = (root: string) => {
@@ -187,14 +171,6 @@ let ensureWorkspaceLayoutCompatible = (root: string) => {
     if (fs.existsSync(target) && !fs.statSync(target).isFile()) {
       throw new Error(`Cannot initialize workspace: "${target}" exists and is not a file`)
     }
-  }
-}
-
-let validateWorkspaceDraftFile = (relPath: string, content: string) => {
-  if (!relPath.startsWith("drafts/") || !relPath.endsWith(".json")) return
-  let draft = Draft.parse(JSON.parse(content))
-  if (!relPath.endsWith(`_${draft.id}.json`)) {
-    throw new Error(`Draft file path must end with _${draft.id}.json`)
   }
 }
 
@@ -283,8 +259,8 @@ export let initWorkspace = (
   if (!fs.existsSync(path.resolve(root, "AGENTS.md"))) {
     fs.writeFileSync(path.resolve(root, "AGENTS.md"), defaultAgentInstructions())
   }
-  if (!fs.existsSync(path.resolve(root, "status.md"))) {
-    fs.writeFileSync(path.resolve(root, "status.md"), DEFAULT_STATUS)
+  if (!fs.existsSync(path.resolve(root, "state.jsonl"))) {
+    fs.writeFileSync(path.resolve(root, "state.jsonl"), "")
   }
 
   return { path: root, config }
@@ -415,10 +391,6 @@ export let applyWorkspacePush = (
     }
 
     let content = Buffer.from(patch.contentBase64, "base64")
-    if (target.normalized.startsWith("drafts/")) {
-      validateWorkspaceDraftFile(target.normalized, content.toString("utf8"))
-    }
-
     fs.mkdirSync(path.dirname(target.resolved), { recursive: true })
     fs.writeFileSync(target.resolved, content)
   }

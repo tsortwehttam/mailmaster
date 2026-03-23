@@ -82,14 +82,15 @@ describe("session sync integration", () => {
         dir: clientDir,
       })
       assert.equal(pulled.workspaceId, "default")
-      assert.ok(fs.existsSync(path.join(clientDir, "status.md")))
+      assert.ok(fs.existsSync(path.join(clientDir, "state.jsonl")))
       assert.ok(fs.existsSync(path.join(clientDir, "AGENTS.md")))
       // Server connection info should be written into AGENTS.md
       let agentsMd = fs.readFileSync(path.join(clientDir, "AGENTS.md"), "utf8")
       assert.match(agentsMd, /## Server/)
       assert.match(agentsMd, new RegExp(serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 
-      fs.writeFileSync(path.join(clientDir, "status.md"), "# Status\n\nLocal update.\n")
+      let stateEntry = JSON.stringify({ id: "s1", type: "summary", status: "current", data: { text: "Local update" }, createdAt: "2026-03-20T00:00:00Z", updatedAt: "2026-03-20T00:00:00Z" }) + "\n"
+      fs.writeFileSync(path.join(clientDir, "state.jsonl"), stateEntry)
 
       let pushed = await sessionClient.syncPush({
         serverUrl,
@@ -108,9 +109,9 @@ describe("session sync integration", () => {
       })
       assert.equal(exported.status, 200)
       let exportedPayload = await exported.json() as { ok: boolean; data: { files: Array<{ path: string; contentBase64: string }> } }
-      let statusFile = exportedPayload.data.files.find(file => file.path === "status.md")
-      assert.ok(statusFile)
-      assert.match(Buffer.from(statusFile!.contentBase64, "base64").toString("utf8"), /Local update/)
+      let stateFile = exportedPayload.data.files.find(file => file.path === "state.jsonl")
+      assert.ok(stateFile)
+      assert.match(Buffer.from(stateFile!.contentBase64, "base64").toString("utf8"), /Local update/)
     } finally {
       await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()))
     }

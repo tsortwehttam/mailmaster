@@ -56,9 +56,7 @@ export let resolveSessionConnection = (params: { serverUrl?: string; token?: str
 }
 
 let writablePath = (relPath: string) =>
-  relPath === "status.md"
-  || relPath === "AGENTS.md"
-  || relPath.startsWith("drafts/")
+  relPath === "state.jsonl"
 
 let exportablePath = (relPath: string) => !(relPath.split("/")[0] ?? "").startsWith(".")
 

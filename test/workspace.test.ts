@@ -65,6 +65,7 @@ describe("workspace store", () => {
     assert.equal(result.path, dir)
     assert.ok(fs.existsSync(path.join(result.path, "workspace.json")))
     assert.ok(fs.existsSync(path.join(result.path, "messages.jsonl")))
+    assert.ok(fs.existsSync(path.join(result.path, "state.jsonl")))
     assert.ok(fs.existsSync(path.join(result.path, ".msgmon", "state")))
 
     fs.writeFileSync(path.join(result.path, ".msgmon", "secret.txt"), "do not export")
@@ -73,7 +74,7 @@ describe("workspace store", () => {
     let snapshot = workspaceStore.exportWorkspaceSnapshot("alpha")
     let paths = snapshot.files.map(file => file.path)
     assert.ok(paths.includes("workspace.json"))
-    assert.ok(paths.includes("status.md"))
+    assert.ok(paths.includes("state.jsonl"))
     assert.ok(paths.includes("messages.jsonl"))
     assert.ok(!paths.some(file => file.startsWith(".msgmon/")))
   })
@@ -93,35 +94,33 @@ describe("workspace store", () => {
     assert.match(fs.readFileSync(path.join(dir, "notes.txt"), "utf8"), /keep me/)
     assert.match(fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /# Existing/)
     assert.ok(fs.existsSync(path.join(dir, "workspace.json")))
-    assert.ok(fs.existsSync(path.join(dir, "status.md")))
+    assert.ok(fs.existsSync(path.join(dir, "state.jsonl")))
     assert.ok(fs.existsSync(path.join(dir, "messages.jsonl")))
     assert.ok(fs.existsSync(path.join(dir, ".msgmon", "state")))
   })
 
-  it("applies bounded pushes, validates drafts, and detects stale revisions", () => {
+  it("applies bounded pushes and detects stale revisions", () => {
     useDir("beta")
     workspaceStore.initWorkspace("beta")
     let initial = workspaceStore.exportWorkspaceSnapshot("beta")
-    let updatedStatus = Buffer.from("# Status\n\nUpdated\n", "utf8").toString("base64")
-    let draftRecord = makeDraft("draft-1")
-    let draftPath = `drafts/${draftStore.draftFileName(draftRecord)}`
-    let draft = Buffer.from(JSON.stringify(draftRecord, null, 2) + "\n", "utf8").toString("base64")
+    let stateContent = Buffer.from(
+      JSON.stringify({ id: "s1", type: "summary", status: "current", data: { text: "Updated" }, createdAt: "2026-03-20T00:00:00Z", updatedAt: "2026-03-20T00:00:00Z" }) + "\n",
+      "utf8",
+    ).toString("base64")
 
     let pushed = workspaceStore.applyWorkspacePush("beta", {
       baseRevision: initial.revision,
       files: [
-        { path: "status.md", contentBase64: updatedStatus },
-        { path: draftPath, contentBase64: draft },
+        { path: "state.jsonl", contentBase64: stateContent },
       ],
     })
 
     assert.notEqual(pushed.revision, initial.revision)
-    assert.equal(draftStore.loadDraft("beta", "draft-1").id, "draft-1")
 
     assert.throws(
       () => workspaceStore.applyWorkspacePush("beta", {
         baseRevision: initial.revision,
-        files: [{ path: "status.md", contentBase64: updatedStatus }],
+        files: [{ path: "state.jsonl", contentBase64: stateContent }],
       }),
       /revision conflict/,
     )
@@ -129,20 +128,40 @@ describe("workspace store", () => {
     assert.throws(
       () => workspaceStore.applyWorkspacePush("beta", {
         baseRevision: pushed.revision,
-        files: [{ path: "workspace.json", contentBase64: updatedStatus }],
+        files: [{ path: "workspace.json", contentBase64: stateContent }],
       }),
       /read-only/,
     )
   })
 
+  it("stores and retrieves drafts via state.jsonl", () => {
+    useDir("draft-state")
+    workspaceStore.initWorkspace("draft-state")
+    let draft = makeDraft("draft-1")
+    draftStore.saveDraft("draft-state", draft as any)
+    let loaded = draftStore.loadDraft("draft-state", "draft-1")
+    assert.equal(loaded.id, "draft-1")
+    assert.equal(loaded.platform, "gmail")
+
+    let all = draftStore.listDrafts("draft-state")
+    assert.equal(all.length, 1)
+
+    draftStore.deleteDraft("draft-state", "draft-1")
+    assert.throws(() => draftStore.loadDraft("draft-state", "draft-1"), /not found/)
+  })
+
   it("exports and imports workspace bundles", () => {
     useDir("bundle-src")
     workspaceStore.initWorkspace("bundle-src", { name: "Bundle Source" })
+    let stateContent = Buffer.from(
+      JSON.stringify({ id: "s1", type: "summary", status: "current", data: { text: "Bundled" }, createdAt: "2026-03-20T00:00:00Z", updatedAt: "2026-03-20T00:00:00Z" }) + "\n",
+      "utf8",
+    ).toString("base64")
     workspaceStore.applyWorkspacePush("bundle-src", {
       baseRevision: workspaceStore.exportWorkspaceSnapshot("bundle-src").revision,
       files: [{
-        path: "status.md",
-        contentBase64: Buffer.from("# Status\n\nBundled\n", "utf8").toString("base64"),
+        path: "state.jsonl",
+        contentBase64: stateContent,
       }],
     })
 
@@ -155,8 +174,8 @@ describe("workspace store", () => {
 
     assert.equal(imported.workspaceId, "bundle-dst")
     assert.equal(workspaceStore.loadWorkspaceConfig("bundle-dst").name, "Bundle Source")
-    let status = Buffer.from(imported.files.find(file => file.path === "status.md")!.contentBase64, "base64").toString("utf8")
-    assert.match(status, /Bundled/)
+    let state = Buffer.from(imported.files.find(file => file.path === "state.jsonl")!.contentBase64, "base64").toString("utf8")
+    assert.match(state, /Bundled/)
   })
 
   it("can infer the latest pulled message timestamp from messages.jsonl", async () => {
@@ -232,15 +251,8 @@ describe("workspace API handlers", () => {
     assert.equal(exported.status, 200)
     let revision = (exported.data as { revision: string }).revision
 
-    let push = await handlers["POST /api/workspace/push"]({
-      workspaceId: "gamma",
-      baseRevision: revision,
-      files: [{
-        path: `drafts/${draftStore.draftFileName(makeDraft("draft-2"))}`,
-        contentBase64: Buffer.from(JSON.stringify(makeDraft("draft-2"), null, 2) + "\n", "utf8").toString("base64"),
-      }],
-    })
-    assert.equal(push.status, 200)
+    // Save a draft via the draft store, then delete it via workspace actions
+    draftStore.saveDraft("gamma", makeDraft("draft-2") as any)
     assert.equal(draftStore.loadDraft("gamma", "draft-2").id, "draft-2")
 
     let action = await handlers["POST /api/workspace/actions"]({
