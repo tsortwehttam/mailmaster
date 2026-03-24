@@ -3,12 +3,15 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import http from "node:http"
+import { spawnSync } from "node:child_process"
 
 let tmpDir: string
 let prevCwd: string
 let serverModule: typeof import("../src/serve/server")
 let sessionClient: typeof import("../src/session/client")
 let cliConfig: typeof import("../src/CliConfig")
+let workspaceStore: typeof import("../src/workspace/store")
 
 before(async () => {
   prevCwd = process.cwd()
@@ -18,6 +21,7 @@ before(async () => {
   cliConfig = await import("../src/CliConfig")
   serverModule = await import("../src/serve/server")
   sessionClient = await import("../src/session/client")
+  workspaceStore = await import("../src/workspace/store")
 })
 
 after(() => {
@@ -112,6 +116,138 @@ describe("session sync integration", () => {
       let stateFile = exportedPayload.data.files.find(file => file.path === "state.jsonl")
       assert.ok(stateFile)
       assert.match(Buffer.from(stateFile!.contentBase64, "base64").toString("utf8"), /Local update/)
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()))
+    }
+  })
+
+  it("syncs a client mirror against generic pull and push URLs", async () => {
+    let sourceDir = path.join(tmpDir, "generic-source")
+    let clientDir = path.join(tmpDir, "generic-client")
+    fs.mkdirSync(sourceDir, { recursive: true })
+    cliConfig.setWorkspaceDir(sourceDir)
+    workspaceStore.initWorkspace("default", {
+      accounts: ["default"],
+      query: "is:unread",
+    })
+    let snapshot = workspaceStore.exportWorkspaceSnapshot("default")
+
+    let pushedBody = ""
+    let pushedToken = ""
+    let server = http.createServer((req, res) => {
+      if (req.method === "GET" && req.url === "/workspace.json") {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify(snapshot))
+        return
+      }
+      if (req.method === "POST" && req.url === "/workspace.push") {
+        pushedToken = String(req.headers["x-auth-token"] ?? "")
+        req.setEncoding("utf8")
+        req.on("data", chunk => { pushedBody += chunk })
+        req.on("end", () => {
+          res.writeHead(204)
+          res.end()
+        })
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject)
+      server.listen(0, "127.0.0.1", () => resolve())
+    })
+
+    try {
+      let address = server.address()
+      assert.ok(address && typeof address === "object")
+      let baseUrl = `http://127.0.0.1:${address.port}`
+
+      let pulled = await sessionClient.syncPull({
+        pullUrl: `${baseUrl}/workspace.json`,
+        token: "generic-token",
+        dir: clientDir,
+      })
+      assert.equal(pulled.workspaceId, "default")
+      assert.ok(fs.existsSync(path.join(clientDir, "workspace.json")))
+      assert.ok(fs.existsSync(path.join(clientDir, "AGENTS.md")))
+
+      let stateEntry = JSON.stringify({ id: "s2", type: "summary", status: "current", data: { text: "Generic update" }, createdAt: "2026-03-20T00:00:00Z", updatedAt: "2026-03-20T00:00:00Z" }) + "\n"
+      fs.writeFileSync(path.join(clientDir, "state.jsonl"), stateEntry)
+
+      let pushed = await sessionClient.syncPush({
+        pushUrl: `${baseUrl}/workspace.push`,
+        token: "generic-token",
+        dir: clientDir,
+      })
+      assert.equal(pushed.pushed, true)
+      assert.equal(pushedToken, "generic-token")
+      assert.ok(pushedBody.length > 0)
+
+      let payload = JSON.parse(pushedBody) as {
+        workspaceId: string
+        files: Array<{ path: string; contentBase64: string }>
+      }
+      assert.equal(payload.workspaceId, "default")
+      let stateFile = payload.files.find(file => file.path === "state.jsonl")
+      assert.ok(stateFile)
+      assert.match(Buffer.from(stateFile!.contentBase64, "base64").toString("utf8"), /Generic update/)
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()))
+    }
+  })
+
+  it("pulls a workspace archive from a generic tar.gz URL", async () => {
+    let sourceDir = path.join(tmpDir, "archive-source")
+    let clientDir = path.join(tmpDir, "archive-client")
+    let archivePath = path.join(tmpDir, "workspace.tgz")
+    fs.mkdirSync(sourceDir, { recursive: true })
+    cliConfig.setWorkspaceDir(sourceDir)
+    workspaceStore.initWorkspace("default", {
+      accounts: ["default"],
+      query: "is:unread",
+    })
+    fs.writeFileSync(path.join(sourceDir, "state.jsonl"), JSON.stringify({
+      id: "s3",
+      type: "summary",
+      status: "current",
+      data: { text: "Archive payload" },
+      createdAt: "2026-03-20T00:00:00Z",
+      updatedAt: "2026-03-20T00:00:00Z",
+    }) + "\n")
+
+    let tar = spawnSync("tar", ["-czf", archivePath, "-C", sourceDir, "."])
+    assert.equal(tar.status, 0, tar.stderr?.toString() ?? tar.stdout?.toString())
+
+    let server = http.createServer((req, res) => {
+      if (req.method === "GET" && req.url === "/workspace.tgz") {
+        res.writeHead(200, { "Content-Type": "application/gzip" })
+        res.end(fs.readFileSync(archivePath))
+        return
+      }
+      res.writeHead(404)
+      res.end()
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject)
+      server.listen(0, "127.0.0.1", () => resolve())
+    })
+
+    try {
+      let address = server.address()
+      assert.ok(address && typeof address === "object")
+      let baseUrl = `http://127.0.0.1:${address.port}`
+
+      let pulled = await sessionClient.syncPull({
+        pullUrl: `${baseUrl}/workspace.tgz`,
+        dir: clientDir,
+      })
+
+      assert.equal(pulled.workspaceId, "default")
+      assert.ok(fs.existsSync(path.join(clientDir, "workspace.json")))
+      assert.match(fs.readFileSync(path.join(clientDir, "state.jsonl"), "utf8"), /Archive payload/)
     } finally {
       await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()))
     }

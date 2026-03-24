@@ -31,11 +31,10 @@ msgmon serve ./workspace
 msgmon client start \
   --server=http://127.0.0.1:3271 \
   --dir=/tmp/agent-sandbox \
-  --watch \
   --agent-command='codex .'
 ```
 
-The agent sees only exported workspace files. Server connection details are written into `AGENTS.md` so the agent can call server APIs. New messages arrive via explicit pulls — either `msgmon server pull ./workspace` on a cron, or `POST /api/workspace/pull` through the server.
+The agent sees only exported workspace files. Server connection details are written into `AGENTS.md` so the agent can call server APIs. `msgmon client start` is a one-shot session: it asks the server to pull new messages, syncs the exported workspace into the client directory, runs the agent command, then pushes `state.jsonl` back when the agent exits. New messages otherwise arrive via explicit pulls — either `msgmon server pull ./workspace` on a cron, or `POST /api/workspace/pull` through the server.
 
 During setup, the initial Gmail bootstrap pull uses `in:inbox category:primary` plus the chosen time range. Ongoing server pulls use the workspace query, which also currently defaults to `in:inbox category:primary`.
 
@@ -184,9 +183,28 @@ Filesystem sync for isolated agent runtimes.
 msgmon client start --server=http://127.0.0.1:3271 --dir=/tmp/agent-sandbox --agent-command='codex .'
 msgmon client pull --server=http://127.0.0.1:3271 --dir=/tmp/agent-sandbox
 msgmon client push --dir=/tmp/agent-sandbox
+
+# generic pull/push endpoints also work
+msgmon client start \
+  --pull-url=https://example.com/workspace.tgz \
+  --push-url=https://example.com/workspace.push \
+  --dir=/tmp/agent-sandbox \
+  --agent-command='codex .'
 ```
 
-`push` sends only `state.jsonl` back to the server.
+`push` sends only `state.jsonl` back to the remote.
+
+`client` supports two transport modes:
+- `--server`: use the built-in `msgmon serve` API (`/api/agent/manifest`, `/api/workspace/export`, `/api/workspace/push`)
+- `--pull-url` / `--push-url`: use generic HTTP endpoints instead
+
+Generic pull URLs use `GET` and support:
+- raw workspace snapshot JSON
+- raw workspace bundle JSON
+- `msgmon serve` JSON response envelopes containing either of those
+- `.tar`, `.tar.gz`, `.tgz`, or `.zip` archives containing the client workspace files
+
+Generic push URLs use `POST` with the writable patch payload as JSON. If you use `--pull-url` with `client start`, also provide `--push-url` so changes can be sent back after the agent exits.
 
 ### `msgmon gmail` / `msgmon slack`
 

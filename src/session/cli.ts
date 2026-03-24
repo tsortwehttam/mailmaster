@@ -8,9 +8,17 @@ let withShared = (y: Argv) =>
       type: "string",
       describe: "Messaging proxy server base URL (defaults to local .msgmon/serve.json, then http://127.0.0.1:3271)",
     })
+    .option("pull-url", {
+      type: "string",
+      describe: "Generic workspace pull URL. Uses GET and supports raw snapshot/bundle JSON or archives (.tar, .tar.gz, .tgz, .zip). Overrides --server for pulls.",
+    })
+    .option("push-url", {
+      type: "string",
+      describe: "Generic workspace push URL. Uses POST with the writable file patch payload. Overrides --server for pushes.",
+    })
     .option("token", {
       type: "string",
-      describe: "X-Auth-Token value (defaults to local .msgmon/serve.json token when present)",
+      describe: "Bearer-style auth value sent as X-Auth-Token (defaults to local .msgmon/serve.json token when present)",
     })
     .option("dir", {
       type: "string",
@@ -41,6 +49,8 @@ export let configureClientCli = (cli: Argv) =>
           dir: argv.dir,
           agentCommand: argv.agentCommand,
           force: argv.force,
+          pullUrl: argv.pullUrl,
+          pushUrl: argv.pushUrl,
         })
         console.log(JSON.stringify(result, null, 2))
       },
@@ -59,6 +69,7 @@ export let configureClientCli = (cli: Argv) =>
           token: argv.token,
           dir: argv.dir,
           force: argv.force,
+          pullUrl: argv.pullUrl,
         })
         console.log(JSON.stringify(result, null, 2))
       },
@@ -72,6 +83,7 @@ export let configureClientCli = (cli: Argv) =>
           dir: argv.dir,
           serverUrl: argv.server,
           token: argv.token,
+          pushUrl: argv.pushUrl,
         })
         console.log(JSON.stringify(result, null, 2))
       },
